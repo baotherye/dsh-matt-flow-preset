@@ -70,6 +70,7 @@ window.__ModuleLoader__.load({
 .mf-chip-label { white-space:nowrap; }
 .mf-chip-count { color:var(--dsw-alias-label-secondary); font-variant-numeric:tabular-nums; }
 .mf-chip-running { color:var(--dsw-alias-brand-primary); font-variant-numeric:tabular-nums; }
+.mf-pop-repo { color:var(--dsw-alias-state-warn-primary); line-height:1.5; }
 .mf-pop-running { display:flex; flex-direction:column; gap:3px; padding-top:2px;
   border-top:1px solid var(--dsw-alias-border-l1); }
 .mf-pop-running-head { color:var(--dsw-alias-label-secondary); font-size:11px; }
@@ -468,6 +469,10 @@ window.__ModuleLoader__.load({
               className: 'mf-pop-gate',
             }, isCurrent ? '当前阶段' : isPast ? '已通过' : '未开始'),
             h('div', { key: 'doc', className: 'mf-pop-doc' }, STAGE_DOC[pickedStage?.id] ?? ''),
+            flow.repoReady === false
+              ? h('div', { key: 'repo', className: 'mf-pop-repo' },
+                '仓库未初始化：issue 放在哪还没写进 docs/agents/issue-tracker.md')
+              : null,
             running.length > 0
               ? h('div', { key: 'running', className: 'mf-pop-running' }, [
                 h('span', { key: 'head', className: 'mf-pop-running-head' }, '子代理运行中'),

@@ -25,7 +25,7 @@ import { join } from 'node:path'
 export const name = 'matt-flow'
 
 /** Bumped with package.json; the startup breadcrumbs carry it so a stale module is visible. */
-const PLUGIN_VERSION = '0.7.5'
+const PLUGIN_VERSION = '0.7.6'
 
 /** Startup breadcrumbs, so a "never started" report can be told apart from a silent no-op. */
 const LOG_DIR = tmpdir()
@@ -81,6 +81,33 @@ function normalizeStage(stage) {
   return STAGES.includes(name) ? name : STAGES[0]
 }
 
+/**
+ * Written to `docs/agents/issue-tracker.md` the first time a repo is used. The
+ * local-markdown convention is self-contained, so initialisation needs no
+ * question and no network: the file appears, and later stages simply find it.
+ * Matches the layout `setup-matt-pocock-skills` documents for a local tracker.
+ */
+const TRACKER_TEMPLATE = `# Issue tracker: Local Markdown
+
+Issues and specs for this repo live as markdown files in \`.scratch/\`.
+
+## Conventions
+
+- One feature per directory: \`.scratch/<feature-slug>/\`
+- The spec is \`.scratch/<feature-slug>/spec.md\`
+- Implementation issues are one file per ticket at \`.scratch/<feature-slug>/issues/<NN>-<slug>.md\`, numbered from \`01\`, never a single combined tickets file
+- Triage state is recorded as a \`Status:\` line near the top of each issue file
+- Comments and conversation history append to the bottom of the file under a \`## Comments\` heading
+
+## When a skill says "publish to the issue tracker"
+
+Create a new file under \`.scratch/<feature-slug>/\` (creating the directory if needed).
+
+## When a skill says "fetch the relevant ticket"
+
+Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+`
+
 const FEATURE_ROOT = '.scratch'
 const TRACKER_DOC = 'docs/agents/issue-tracker.md'
 const TRACKER_MIN_CHARS = 40
@@ -122,12 +149,15 @@ If the catalog above does not list them, the suite is not installed yet. This pr
 - A design question that needs runnable code → load \`prototype\`.
 - Codebase upkeep → propose \`/improve-codebase-architecture\`.
 
-## Before the first spec
+## Before anything else
 
-The suite assumes a per-repo decision about where issues live. Nothing before \`spec\` needs it, so settle it when you first reach \`spec\`:
+Initialisation is **not** your decision and not a question: \`flow_stage\` performs it on first use, and refuses to do anything else until it has succeeded.
 
-- Default the issue tracker to **local markdown under \`.scratch/<feature>/\`** unless the repo's remote is GitHub or GitLab. That keeps the whole flow self-contained.
-- Record it in \`docs/agents/issue-tracker.md\`; that file is the precondition for \`spec\`. If the user wants the full upstream layout — triage labels, \`docs/agents/domain.md\`, the \`## Agent skills\` block in CLAUDE.md/AGENTS.md — ask them to run \`/setup-matt-pocock-skills\`, which is user-only.
+- It waits for the skill suite to finish installing, because the templates it copies live in that package.
+- It writes the per-repo configuration \`setup-matt-pocock-skills\` scaffolds: \`docs/agents/issue-tracker.md\`, \`docs/agents/domain.md\`, \`docs/agents/triage-labels.md\` when the triage skill is installed, and the \`## Agent skills\` block in CLAUDE.md (or AGENTS.md).
+- The issue tracker is fixed to local markdown under \`.scratch/\`. That is the only place this flow departs from asking.
+
+While that has not happened, every other tool is denied. If a call is refused, do not work around it and do not start reading the user's files: call \`flow_stage\` with \`action: "status"\` and let it initialise.
 
 ## Main flow
 
@@ -313,6 +343,7 @@ const TOOL_OUTPUT_SCHEMA = {
     next: { type: 'string' },
     path: { type: 'string' },
     moved: { type: 'boolean' },
+    repoReady: { type: 'boolean' },
     gates: {
       type: 'array',
       items: {
@@ -344,7 +375,7 @@ function buildTool(ctx) {
       schema: TOOL_OUTPUT_SCHEMA,
       render: (_args, value) => [{
         type: 'text',
-        text: `${value.feature}: ${value.stage}${value.next ? ` (next: ${value.next})` : ''}${value.moved ? ' — advanced' : ''}`
+        text: `${value.feature}: ${value.stage}${value.next ? ` (next: ${value.next})` : ''}${value.moved ? ' — advanced' : ''}${value.repoReady === false ? ' · repo could not be initialised: write docs/agents/issue-tracker.md by hand' : ''}`
       }],
       // Carried into the tool result meta, where the `matt-flow` projection folds it
       // into the value the composer dock renders.
@@ -353,6 +384,7 @@ function buildTool(ctx) {
         feature: value.feature,
         stage: value.stage,
         next: value.next ?? null,
+        repoReady: value.repoReady !== false,
         gates: value.gates,
       }),
     },
@@ -366,15 +398,52 @@ function buildTool(ctx) {
       const root = join(cwd, FEATURE_ROOT, feature)
       const stateFile = join(root, 'flow.json')
       const state = await readState(stateFile)
+      // A repo is initialised once its issue-tracker decision is on disk. The
+      // first feature of a repo starts here, so this is where the check lands —
+      // and where a missing file is written, so no round-trip is spent asking.
+      const trackerPath = join(cwd, TRACKER_DOC)
+      // Two gates, in order, and both are refusals rather than advice: the
+      // templates live in the skill package, and nothing may run before the
+      // repo configuration exists.
+      const skills = await awaitSkills()
+      if (!skills.ready) {
+        throw new Error(
+          `the skill suite is not ready (${skills.state}): ${skills.error || 'still installing'}. `
+          + 'flow_stage cannot initialise this repo until it is; check again with flow_skills.'
+        )
+      }
+
+      let repoReady = await isFileReady(join(cwd, TRACKER_DOC), TRACKER_MIN_CHARS)
+      if (!repoReady) {
+        const init = await initialiseRepo(cwd)
+        if (!init.ready) {
+          throw new Error(`could not initialise this repo: ${init.error || 'unknown reason'}`)
+        }
+        repoReady = true
+        mark(APPLY_LOG, `initialised repo: ${init.written.join(', ')}`)
+      }
       const stage = normalizeStage(state?.stage)
 
       if (args.action === 'status') {
+        // First contact with a feature creates its record. The flow has no
+        // separate "start" step, and a session that only ever asks for status
+        // would otherwise leave no trace on disk at all.
+        if (!state) {
+          const now = new Date().toISOString()
+          await mkdir(root, { recursive: true })
+          await writeFile(
+            stateFile,
+            JSON.stringify({ feature, stage, updatedAt: now, history: [] }, null, 2) + '\n',
+            'utf8'
+          )
+        }
         const next = STAGES[STAGES.indexOf(stage) + 1]
         return {
           feature,
           stage,
           ...(next ? { next } : {}),
           path: stateFile,
+          repoReady,
           gates: await describeGates(stage, cwd, root)
         }
       }
@@ -418,6 +487,7 @@ function buildTool(ctx) {
         ...(next ? { next } : {}),
         path: stateFile,
         moved,
+        repoReady,
         gates: await describeGates(target, cwd, root)
       }
     }
@@ -694,6 +764,124 @@ function ensureSkills(options = {}) {
   return { state: 'installing', present, missing, log: BOOTSTRAP_LOG }
 }
 
+/**
+ * Block until the skill suite is on disk, starting an install when it is not.
+ *
+ * Initialisation writes templates that live inside the skill package, so it
+ * cannot proceed on a machine where the suite is absent. Callers get `ready`
+ * and, when false, the reason to report.
+ * @returns {Promise<{ready: boolean, state: string, error?: string, log?: string}>} outcome
+ */
+async function awaitSkills() {
+  let status = ensureSkills()
+  if (status.state === 'present') return { ready: true, state: 'present' }
+
+  const deadline = Date.now() + INSTALL_TIMEOUT_MS
+  let delay = 1000
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    delay = Math.min(Math.round(delay * 1.5), 5000)
+    const { present, missing } = skillPresence()
+    if (missing.length === 0) return { ready: true, state: 'present' }
+    const record = readBootstrap()
+    if (record.state === 'failed') {
+      return {
+        ready: false,
+        state: 'failed',
+        error: record.error || `skills still missing: ${missing.join(', ')}`,
+        log: BOOTSTRAP_LOG,
+      }
+    }
+    status = { state: record.state || 'installing' }
+  }
+  return { ready: false, state: 'timeout', error: `skills not installed within ${Math.round(INSTALL_TIMEOUT_MS / 1000)}s`, log: BOOTSTRAP_LOG }
+}
+
+/**
+ * Write the per-repo configuration `setup-matt-pocock-skills` scaffolds, copying
+ * the templates that skill ships rather than restating them here.
+ *
+ * The one deliberate departure is the tracker choice: it is fixed to local
+ * markdown instead of asking, so initialisation needs no question.
+ * @param {string} cwd repository root
+ * @returns {Promise<{ready: boolean, written: string[], error?: string}>} outcome
+ */
+async function initialiseRepo(cwd) {
+  const skillDir = join(skillsHome(), 'setup-matt-pocock-skills')
+  const written = []
+
+  const readTemplate = async (name) => {
+    try {
+      return await readFile(join(skillDir, name), 'utf8')
+    } catch {
+      return null
+    }
+  }
+
+  const tracker = await readTemplate('issue-tracker-local.md')
+  if (tracker === null) {
+    return { ready: false, written, error: `template missing: ${join(skillDir, 'issue-tracker-local.md')}` }
+  }
+  const domain = await readTemplate('domain.md')
+  if (domain === null) {
+    return { ready: false, written, error: `template missing: ${join(skillDir, 'domain.md')}` }
+  }
+
+  const agentsDir = join(cwd, 'docs', 'agents')
+  await mkdir(agentsDir, { recursive: true })
+
+  const put = async (file, text) => {
+    const target = join(agentsDir, file)
+    if (await isFileReady(target, TRACKER_MIN_CHARS)) return
+    await writeFile(target, text, 'utf8')
+    written.push(join('docs', 'agents', file))
+  }
+
+  await put('issue-tracker.md', tracker)
+  await put('domain.md', domain)
+
+  // The triage vocabulary is only meaningful when that skill is installed.
+  if (existsSync(join(skillsHome(), 'triage', 'SKILL.md'))) {
+    const labels = await readTemplate('triage-labels.md')
+    if (labels !== null) await put('triage-labels.md', labels)
+  }
+
+  // The upstream rule is CLAUDE.md, else AGENTS.md, else ask. Asking is off the
+  // table here, so a repo with neither gets AGENTS.md — the harness's own name.
+  const claude = join(cwd, 'CLAUDE.md')
+  const agents = join(cwd, 'AGENTS.md')
+  const host = existsSync(claude) ? claude : agents
+  const section = [
+    '## Agent skills',
+    '',
+    '### Issue tracker',
+    '',
+    'Issues and specs live as local markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.',
+    '',
+    ...(existsSync(join(agentsDir, 'triage-labels.md'))
+      ? ['### Triage labels', '', 'Labels map to the five canonical triage roles. See `docs/agents/triage-labels.md`.', '']
+      : []),
+    '### Domain docs',
+    '',
+    'Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.',
+    '',
+  ].join('\n')
+
+  let hostText = ''
+  try {
+    hostText = await readFile(host, 'utf8')
+  } catch {
+    hostText = ''
+  }
+  if (!/^## Agent skills$/m.test(hostText)) {
+    const glue = hostText.length === 0 ? '' : hostText.endsWith('\n') ? '\n' : '\n\n'
+    await writeFile(host, `${hostText}${glue}${section}`, 'utf8')
+    written.push(host === claude ? 'CLAUDE.md' : 'AGENTS.md')
+  }
+
+  return { ready: true, written }
+}
+
 /** Build the flow_skills tool: report or retry the suite install. */
 function buildSkillsTool() {
   return {
@@ -826,6 +1014,7 @@ const FLOW_PROJECTION = {
         feature: payload.feature,
         stage,
         next: payload.next ?? (STAGES[index + 1] ?? null),
+        repoReady: payload.repoReady !== false,
         gates: Array.isArray(payload.gates) ? payload.gates : [],
       },
     }
@@ -877,6 +1066,25 @@ export function apply(ctx, config) {
   ctx.effect(() => tools.register(buildAskTool()))
   ctx.effect(() => tools.register(buildSkillsTool()))
   mark(APPLY_LOG, 'flow_stage, flow_ask and flow_skills registered')
+
+  // A refusal, not a hint. Until the repo configuration exists, every tool but
+  // the two that can fix that is denied — including reads, so the model cannot
+  // start grilling off its own reading before setup has happened.
+  if (typeof tools.guard === 'function') {
+    ctx.effect(() => tools.guard((execution) => {
+      const name = execution && execution.name
+      if (name === 'flow_stage' || name === 'flow_skills') return undefined
+      const cwd = execution && execution.agent && execution.agent.session
+        ? execution.agent.session.cwd
+        : undefined
+      if (typeof cwd !== 'string' || cwd.length === 0) return undefined
+      if (existsSync(join(cwd, TRACKER_DOC))) return undefined
+      return 'this repo is not initialised yet: call flow_stage once (it installs the skill suite if needed, then writes docs/agents/*). Every other tool stays blocked until docs/agents/issue-tracker.md exists.'
+    }))
+    mark(APPLY_LOG, 'tool guard registered')
+  } else {
+    mark(APPLY_LOG, 'no tools.guard; initialisation is advisory only')
+  }
 
   // Install the suite when it is absent, without blocking startup. The skills
   // provider watches its roots, so a successful install reaches the catalog
