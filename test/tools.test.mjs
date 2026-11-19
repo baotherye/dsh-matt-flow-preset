@@ -2,16 +2,53 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { mkdtemp } from 'node:fs/promises'
-import { apply } from '../index.js'
+
+// The flow refuses to run without its skills, so the suite is faked here rather
+// than required on the machine: tests must not depend on what the user installed.
+const agentsHome = await mkdtemp(join(tmpdir(), 'agents-'))
+const skillNames = [
+  'ask-matt', 'grilling', 'grill-me', 'grill-with-docs', 'domain-modeling',
+  'triage', 'wayfinder', 'to-spec', 'to-tickets', 'implement', 'tdd',
+  'code-review', 'codebase-design', 'improve-codebase-architecture',
+  'diagnosing-bugs', 'prototype', 'research',
+  'pr', 'handoff', 'migrate-to-shoehorn', 'retro', 'wait-what', 'setup-matt-pocock-skills',
+  'setup-pre-commit',
+]
+for (const name of skillNames) {
+  await mkdir(join(agentsHome, 'skills', name), { recursive: true })
+  await writeFile(join(agentsHome, 'skills', name, 'SKILL.md'), `# ${name}\n`, 'utf8')
+}
+// The initialiser copies these three templates out of the skill package, so the
+// fake package has to carry stand-ins with the same shape.
+const setupDir = join(agentsHome, 'skills', 'setup-matt-pocock-skills')
+await writeFile(join(setupDir, 'issue-tracker-local.md'),
+  '# Issue tracker: Local Markdown\n\nIssues and specs live in `.scratch/`.\n\n## Conventions\n\n- one directory per feature\n', 'utf8')
+await writeFile(join(setupDir, 'domain.md'),
+  '# Domain Docs\n\nRead `CONTEXT.md` and `docs/adr/`.\n', 'utf8')
+await writeFile(join(setupDir, 'triage-labels.md'),
+  '# Triage Labels\n\n| role | label |\n|---|---|\n', 'utf8')
+process.env.DSH_AGENTS_HOME = agentsHome
+// The skills CLI resolves its own global directory from HOME, not from
+// DSH_AGENTS_HOME, so any test that reaches the installer would write into the
+// real ~/.agents/skills. Tests never install.
+process.env.DSH_MATT_FLOW_NO_INSTALL = '1'
+
+const { apply } = await import('../index.js')
 
 const defs = []
 const toolsService = { register: (d) => { defs.push(d); return () => {} } }
-const ctx = { get: (k) => (k === 'tools' ? toolsService : undefined), effect: (fn) => fn() }
+// The plugin asks this seam before any host write; a stub that grants once keeps
+// the ordinary path testable without a live session.
+const approvalStub = { request: async () => 'allowed-once' }
+const ctx = {
+  get: (k) => (k === 'tools' ? toolsService : k === 'approval' ? approvalStub : undefined),
+  effect: (fn) => fn(),
+}
 apply(ctx, {})
 const tool = defs.find((d) => d.name === 'flow_stage')
 const askTool = defs.find((d) => d.name === 'flow_ask')
 const skillsTool = defs.find((d) => d.name === 'flow_skills')
-const exec = { agent: undefined }
+const exec = { agent: { id: 'session-test' }, callId: 'call-test' }
 
 let pass = 0, fail = 0
 const ok = (name, cond, extra = '') => {
