@@ -55,3 +55,12 @@ SOFTWARE.
 | `ask-matt`, `ask-matt/PHASE-BOUNDARIES.md` | `/clear` replaced with "start a new session"; the fixed ~150k-token smart-zone heuristic replaced with DSH's live context usage and automatic compaction. |
 | `research`, `ask-matt`, `chief-of-staff` | "background agent" replaced with the DSH `subagent` tool and its actual parameters. |
 | all skills | `agents/openai.yaml` interface files removed (OpenAI-specific, unused by DSH). |
+| `to-spec`, `to-tickets`, `implement`, `implement-spec` | Added a **Stage handoff** section: `flow_stage` owns the phase in this preset, so they read it with `action: "status"` and record progress with `action: "advance"` instead of declaring the phase finished themselves. |
+| `implement-spec`, `code-review`, `codebase-design/DESIGN-IT-TWICE.md`, `wayfinder` | Worktree and fan-out steps now name the DSH mechanisms: `create_worktree` (with a `git worktree add` fallback) for per-ticket checkouts, and the `workflow` tool for wide parallel fan-out. |
+| `chief-of-staff` | Vague "harness-permitting, suggest schedules" made concrete with `schedule_create`/`schedule_edit`/`schedule_list`/`schedule_view` and the `target` modes. |
+| `retro` | Session transcripts named as `$DSH_HOME/sessions/<project-slug>/session-<uuid>/session.v4.jsonl.zstd`, with how to decompress and grep them. |
+| `setup-matt-pocock-skills` | Documents that the `flow_stage` gate only honours the local `.scratch/` tracker, so a GitHub/GitLab choice is a valid answer for the standalone skills but not for the flow. |
+| `scaffold-exercises` | Marked as Matt's course-repo tooling; the private `pnpm ai-hero-cli` lint becomes an optional step with a manual checklist otherwise. |
+| `wizard` | Notes that the `gh` helpers require the GitHub CLI, and how to route those values to `.env` when it is absent. |
+| `handoff`, `handoff-agent` | The boundary between "produce a portable file" and "seed a subagent now" is stated in both skills, not only in `ask-matt`. |
+| `domain-modeling`, `setup-matt-pocock-skills` | `CONTEXT.md` treated as the legacy name it is; the maintained file is `GLOSSARY.md`. The plugin's own prompt and the `AGENTS.md` block it scaffolds were corrected to match. |

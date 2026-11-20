@@ -15,3 +15,8 @@ Run typechecking regularly, single test files regularly, and the full test suite
 Once done, call the `skill` tool with "code-review" to review the work.
 
 Commit your work to the current branch.
+
+## Stage handoff
+
+Under the matt-flow preset, `flow_stage` owns the phase, not this skill. Call it with `action: "status"` before you write anything, so you know which stage the feature is actually in, and `action: "advance"` once this skill's exit criterion is true: it refuses a skipped stage, and it refuses an artifact that is not on disk. Work in `.scratch/<feature>/` — read `spec.md`, `decisions.md`, and the ticket you were given; that is the directory it reads. Do not report the phase as finished on your own authority: report what `flow_stage` returned.
+

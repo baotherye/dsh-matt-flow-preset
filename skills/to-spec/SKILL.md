@@ -8,6 +8,11 @@ This skill takes the current conversation context and codebase understanding and
 
 The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
 
+
+## Stage handoff
+
+Under the matt-flow preset, `flow_stage` owns the phase, not this skill. Call it with `action: "status"` before you write anything, so you know which stage the feature is actually in, and `action: "advance"` once this skill's exit criterion is true: it refuses a skipped stage, and it refuses an artifact that is not on disk. Work in `.scratch/<feature>/` — write `spec.md` there; that is the directory it reads. Do not report the phase as finished on your own authority: report what `flow_stage` returned.
+
 ## Process
 
 1. Explore the repo to understand the current state of the codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the spec, and respect any ADRs in the area you're touching.

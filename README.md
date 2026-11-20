@@ -209,6 +209,18 @@ npx -y skills@latest add mattpocock/skills ...
 
 `cordis.patch.yml` 用一段 `!!js` 表达式把包内的 `skills/` 声明为 `preset-matt` 的 `customSkillDirs`（从 profile 里解析本包的 `package.json` 位置）；其他预设没有这项配置，永远不会扫描它。
 
+### 按 DSH 机制改写的地方
+
+上游技能是写给 Claude Code 的，直接搬过来会指向 DSH 没有的机制。除了工具名（`Skill tool` → `skill`、`/clear` → 开新会话、`background agent` → `subagent`）这类替换，还补了几处**能力对接**——上游不知道 DSH 有这些工具，所以写得很含糊或干脆没提：
+
+- **阶段归属**：`to-spec`、`to-tickets`、`implement`、`implement-spec` 加了 *Stage handoff* 段。系统提示词说阶段归 `flow_stage` 管，原先这些技能各写各的，`.scratch/` 里的产物和 `flow.json` 会脱节。现在它们先 `action: "status"` 读阶段、写完再 `action: "advance"` 落账。
+- **并行 fan-out**：`implement-spec` 的按票并行、`code-review` 的两轴评审、`DESIGN-IT-TWICE` 的 3+ 方案对比，都补上了 `workflow` 工具（脚本化的一次性 fan-out）与 `create_worktree`（每票独立 checkout，带 `git worktree add` 兜底）。
+- **定时任务**：`chief-of-staff` 原来只说"harness 允许的话可以建议定时任务"，现在直接给 `schedule_create`/`schedule_edit`/`schedule_list`/`schedule_view` 和 `target` 三种模式。
+- **会话记录**：`retro` 原来只说"翻本机上的会话日志"，现在给到具体路径 `$DSH_HOME/sessions/<project-slug>/session-<uuid>/session.v4.jsonl.zstd`（zstd JSONL）和解压查看方式。
+- **领域文档**：`domain-modeling` 维护的是 `GLOSSARY.md`，`CONTEXT.md` 是遗留名。插件原先在提示词和写进你仓库 `AGENTS.md` 的块里都指向 `CONTEXT.md`，已改正。
+
+完整清单见 [`skills/ATTRIBUTION.md`](skills/ATTRIBUTION.md)。
+
 ### 它写哪些文件
 
 | 路径 | 内容 |

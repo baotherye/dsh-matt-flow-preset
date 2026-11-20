@@ -25,7 +25,7 @@ import { join } from 'node:path'
 export const name = 'matt-flow'
 
 /** Bumped with package.json; the startup breadcrumbs carry it so a stale module is visible. */
-const PLUGIN_VERSION = '0.9.1'
+const PLUGIN_VERSION = '0.10.0'
 
 /** Startup breadcrumbs, so a "never started" report can be told apart from a silent no-op. */
 const LOG_DIR = tmpdir()
@@ -180,7 +180,7 @@ If the call comes back with an error, read it: it says whether the user refused,
 
 ## Main flow
 
-1. **grill** — load \`grilling\` and \`domain-modeling\`, which together are what the user-facing \`/grill-with-docs\` runs. Interview until the frontier is empty: facts are yours to find, decisions are the user's. No code and no spec yet. Write terms into \`CONTEXT.md\` and hard-to-reverse choices into \`docs/adr/\` as they settle, but create those files lazily — with no new term and no such decision, write neither.
+1. **grill** — load \`grilling\` and \`domain-modeling\`, which together are what the user-facing \`/grill-with-docs\` runs. Interview until the frontier is empty: facts are yours to find, decisions are the user's. No code and no spec yet. Write terms into \`GLOSSARY.md\` (the file \`domain-modeling\` maintains) and hard-to-reverse choices into \`docs/adr/\` as they settle, but create those files lazily — with no new term and no such decision, write neither.
 
 When a decision can be answered by picking one of two to four options, put it on a card with \`flow_ask\` instead of writing it as prose: at most three questions per call, each option one short line, the recommended one first. The user's submission arrives as their next message; record the settled decisions in \`.scratch/<feature>/decisions.md\` before advancing to \`spec\`.
 
@@ -829,7 +829,7 @@ function initialiseRepo(cwd) {
       : []),
     '### Domain docs',
     '',
-    'Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.',
+    'Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.',
     '',
   ].join('\n')
 

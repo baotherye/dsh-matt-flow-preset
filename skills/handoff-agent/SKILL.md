@@ -5,7 +5,7 @@ argument-hint: "What will the next session be used for?"
 disable-model-invocation: true
 ---
 
-Write a handoff summary of the current conversation so a fresh agent can continue the work. Save it to the temporary directory of the user's OS, then start a subagent seeded with it as its prompt via the `subagent` tool: pass the file's **path** and have the child read it, rather than pasting the summary into `prompt` — the child works in its own context, so the summary is data it loads, not a message that needs to survive quoting.
+Write a handoff summary of the current conversation so a fresh agent can continue the work **in this session, now**. Use `/handoff` instead when the document is the deliverable — a new harness, another directory, a colleague, or a side task you will open yourself. Save it to the temporary directory of the user's OS, then start a subagent seeded with it as its prompt via the `subagent` tool: pass the file's **path** and have the child read it, rather than pasting the summary into `prompt` — the child works in its own context, so the summary is data it loads, not a message that needs to survive quoting.
 
 ```
 subagent(

@@ -120,3 +120,63 @@ test('every skill the prompt tells the model to load exists', () => {
     assert.ok(dirs.includes(name), `prompt names \`${name}\`, which is not in the bundle`)
   }
 })
+
+test('the flow skills hand the phase back to flow_stage', () => {
+  // The system prompt makes `flow_stage` the phase owner. A skill that writes
+  // spec.md or issues/ without asking it makes the on-disk record and flow.json
+  // disagree, which is what `resume` then reads.
+  for (const skill of ['to-spec', 'to-tickets', 'implement', 'implement-spec']) {
+    const text = readFileSync(join(skillsRoot, skill, 'SKILL.md'), 'utf8')
+    assert.match(text, /flow_stage/, `${skill}: must name the stage tool that owns the phase`)
+    assert.match(text, /action: "status"/, `${skill}: must read the stage before writing`)
+    assert.match(text, /action: "advance"/, `${skill}: must record the stage it reached`)
+  }
+})
+
+test('the domain file the plugin points every repo at is the one the skills maintain', () => {
+  // domain-modeling writes GLOSSARY.md; setup-matt-pocock-skills calls CONTEXT.md
+  // the legacy name. The plugin used to scaffold a pointer to the legacy file.
+  const domainSkil = readFileSync(join(skillsRoot, 'domain-modeling', 'SKILL.md'), 'utf8')
+  assert.match(domainSkil, /GLOSSARY\.md/, 'domain-modeling maintains GLOSSARY.md')
+  assert.doesNotMatch(source, /`CONTEXT\.md` and `docs\/adr\/`/, 'the AGENTS.md block must point at GLOSSARY.md')
+  const setup = readFileSync(join(skillsRoot, 'setup-matt-pocock-skills', 'SKILL.md'), 'utf8')
+  assert.match(setup, /legacy `CONTEXT\.md`/, 'setup-matt-pocock-skills knows CONTEXT.md is the legacy name')
+})
+
+test('no skill depends on a tool this preset does not mount', () => {
+  // The preset mounts a fixed tool set, and the profile adds a few host-plane
+  // rows every agent sees (`create_worktree`, the terminal and browser tools).
+  // Naming anything outside both is a dead call.
+  const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
+  const mounted = new Set([
+    'read', 'write', 'edit', 'apply_patch', 'read_image', 'glob', 'grep', 'bash',
+    'todo_write', 'web_search', 'web_fetch', 'job_output', 'job_list', 'job_kill',
+    'list_agents', 'wait_agent', 'send_message', 'interrupt_agent', 'subagent',
+    'subagent_fork', 'workflow', 'ask_user_question', 'present', 'skill',
+    'get_goal', 'create_goal', 'update_goal', 'schedule_create', 'schedule_edit',
+    'schedule_list', 'schedule_view', 'flow_stage', 'flow_ask', 'flow_skills',
+    'create_worktree', 'working_directory', 'subagent_fork',
+  ])
+  assert.match(patch, /dsh-tool-schedule/, 'schedule tools are mounted, so skills may name them')
+  // `create_worktree` ships in a profile bundle (`dsh-experimental-tool-worktree`)
+  // rather than this patch, which is why it is in the set but not in the patch.
+  const named = new Set()
+  for (const dir of dirs) {
+    for (const file of readdirSync(join(skillsRoot, dir), { recursive: true })) {
+      const rel = join(skillsRoot, dir, String(file))
+      if (!String(file).endsWith('.md')) continue
+      const text = readFileSync(rel, 'utf8')
+      for (const m of text.matchAll(/`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`/g)) named.add(m[1])
+    }
+  }
+  // snake_case tokens are overwhelmingly file names and config keys; only flag
+  // the ones shaped like a model tool call the skills actually instruct.
+  const toolish = ['todo_write', 'job_output', 'job_kill', 'web_fetch', 'web_search',
+    'schedule_create', 'schedule_edit', 'schedule_list', 'schedule_view',
+    'create_goal', 'update_goal', 'get_goal', 'interrupt_agent', 'wait_agent',
+    'send_message', 'list_agents', 'ask_user_question', 'apply_patch', 'read_image']
+  for (const tool of toolish) {
+    if (!named.has(tool)) continue
+    assert.ok(mounted.has(tool), `${tool} is named but not mounted by the preset`)
+  }
+})

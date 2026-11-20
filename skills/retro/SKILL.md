@@ -10,7 +10,9 @@ The user has asked for a **retrospective**. You are suggesting improvements to t
 
 1. Call the `skill` tool with `writing-for-agents` for the writing style guide.
 
-2. Read the primary sources for the session the user specifies. This may mean searching through session logs on this machine. If the user doesn't specify a session, default to the current one.
+2. Read the primary sources for the session the user specifies. If they don't specify one, use the current session.
+
+   On DSH, an earlier session's transcript is on disk: `$DSH_HOME/sessions/<project-slug>/session-<uuid>/session.v4.jsonl.zstd` (project slug is the working directory with `/` replaced by `-`; the transcript is zstd-compressed JSONL). Older sessions of the same project sit as sibling `session-<uuid>/` directories, newest by directory mtime. To read one, decompress it first (`zstd -dc <file> | less`, or `--long=31` for larger files) and grep the result rather than reading it whole. Ask the user which session if the choice is ambiguous; don't guess between two candidates.
 
 3. Look for candidates for improvement in these categories.
 

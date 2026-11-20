@@ -5,7 +5,9 @@ description: Create exercise directory structures with sections, problems, solut
 
 # Scaffold Exercises
 
-Create exercise directory structures that pass `pnpm ai-hero-cli internal lint`, then commit with `git commit`.
+Create exercise directory structures that match the conventions below, then commit with `git commit`.
+
+> **This skill is Matt's course-repo tooling.** In a repo that has `pnpm ai-hero-cli` available, run `pnpm ai-hero-cli internal lint` at the end as described below. Everywhere else that CLI is not installed and cannot be installed: treat the rules below as a manual checklist you verify with `find`/`grep`, and say plainly that the linter was unavailable rather than reporting a pass you did not run.
 
 ## Directory naming
 
@@ -46,12 +48,12 @@ If the subfolder has code, it also needs a `main.ts` (>1 line). But for stubs, a
 1. **Parse the plan** - extract section names, exercise names, and variant types
 2. **Create directories** - `mkdir -p` for each path
 3. **Create stub readmes** - one `readme.md` per variant folder with a title
-4. **Run lint** - `pnpm ai-hero-cli internal lint` to validate
-5. **Fix any errors** - iterate until lint passes
+4. **Validate** - run `pnpm ai-hero-cli internal lint` if this repo has it; otherwise check each rule in the summary below by hand
+5. **Fix any errors** - iterate until clean
 
 ## Lint rules summary
 
-The linter (`pnpm ai-hero-cli internal lint`) checks:
+The linter (`pnpm ai-hero-cli internal lint`, when available) checks — these are the rules to verify manually otherwise:
 
 - Each exercise has subfolders (`problem/`, `solution/`, `explainer/`)
 - At least one of `problem/`, `explainer/`, or `explainer.1/` exists
