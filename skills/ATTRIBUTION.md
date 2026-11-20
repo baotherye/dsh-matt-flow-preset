@@ -51,6 +51,7 @@ SOFTWARE.
 | --- | --- |
 | `handoff-agent` (was `claude-handoff`) | Renamed. Launches a DSH `subagent` seeded with the handoff file instead of `claude --bg`; explains `subagent_fork` for conversation inheritance and `send_message` for steering. |
 | `git-guardrails` (was `git-guardrails-claude-code`) | Renamed. DSH has no `PreToolUse` hook, so the guardrail is written into `AGENTS.md` and paired with the `/permission` preset instead of `.claude/settings.json` hooks. The hook script was dropped. |
+| `software-factory` | Dropped. It describes remote runners, hosted CI engines and observability platforms — services that do not exist in DSH's single-machine model. |
 | all skills | `Skill tool` references rewritten to the DSH `skill` tool. |
 | `ask-matt`, `ask-matt/PHASE-BOUNDARIES.md` | `/clear` replaced with "start a new session"; the fixed ~150k-token smart-zone heuristic replaced with DSH's live context usage and automatic compaction. |
 | `research`, `ask-matt`, `chief-of-staff` | "background agent" replaced with the DSH `subagent` tool and its actual parameters. |
@@ -64,3 +65,11 @@ SOFTWARE.
 | `wizard` | Notes that the `gh` helpers require the GitHub CLI, and how to route those values to `.env` when it is absent. |
 | `handoff`, `handoff-agent` | The boundary between "produce a portable file" and "seed a subagent now" is stated in both skills, not only in `ask-matt`. |
 | `domain-modeling`, `setup-matt-pocock-skills` | `CONTEXT.md` treated as the legacy name it is; the maintained file is `GLOSSARY.md`. The plugin's own prompt and the `AGENTS.md` block it scaffolds were corrected to match. |
+
+## Keeping this in sync
+
+The upstream snapshot this bundle tracks is recorded in
+[`../.upstream/baseline.json`](../.upstream/baseline.json) (upstream version,
+tarball hash, and a content hash per upstream file). `npm run sync-upstream:check`
+does a three-way comparison and reports, per file, whether upstream moved, we
+moved, or both did — see the README section "技能套件随插件升级".

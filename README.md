@@ -2,7 +2,7 @@
 
 **主页**：https://github.com/baotherye/dsh-matt-flow-preset
 
-把 [Matt Pocock Agent Skills](https://github.com/mattpocock/skills) 套件编成一条**带前置条件的开发工作流**，作为 DSH 的一个 agent 预设。**39 个技能随插件包一起分发**（在包的 `skills/` 目录里），装好插件就有，不需要下载、不需要 `npx`、不发任何网络请求。
+把 [Matt Pocock Agent Skills](https://github.com/mattpocock/skills) 套件编成一条**带前置条件的开发工作流**，作为 DSH 的一个 agent 预设。**38 个技能随插件包一起分发**（在包的 `skills/` 目录里），装好插件就有，不需要下载、不需要 `npx`、不发任何网络请求。
 
 **关键隔离**：只有 `preset-matt`（工作流的 agent 预设）把包内的 `skills/` 声明成自己的 skill 发现根（`customSkillDirs`）；其他 agent 预设没有这项配置，不会扫描它，因此看不到这些技能。全程不碰所有预设都会读取的共享 `~/.agents/skills`。
 
@@ -155,7 +155,7 @@ dsh plugin --profile desktop add /path/to/dsh-matt-flow-preset
 
 第一次进规范阶段前，仓库里需要有一份 `docs/agents/issue-tracker.md` 说明 issue 放在哪。没配过就跑一次 `/setup-matt-pocock-skills`，或者直接让模型按本地 markdown 写一份。
 
-技能套件（39 个）就在插件的 `skills/` 目录里，随包安装完成即生效，**没有安装步骤、没有网络请求、也没有子进程**。让模型调 `flow_skills` 可以确认它们的位置和完整性。
+技能套件（38 个）就在插件的 `skills/` 目录里，随包安装完成即生效，**没有安装步骤、没有网络请求、也没有子进程**。让模型调 `flow_skills` 可以确认它们的位置和完整性。
 
 如果你以前装过原版 `dsh-matt-flow` 或本包的 0.8.x，技能可能残留在共享的 `~/.agents/skills`（旧版）或 `~/.dsh/dsh-matt-flow-preset/.agents/skills`（0.8.x 的私有目录）里。0.9.0 起两者都不再使用，可以整个删掉：
 
@@ -187,6 +187,36 @@ rm -rf ~/.dsh/dsh-matt-flow-preset
 - **`index.js` 改动**：必须重启 DSH。预设子树持有的模块在 Node 的 ESM 缓存里，`install_bundle` 会返回 `restart-required`（原因 `unmanaged-plugin`），热重载换不掉已加载的代码。重启后看系统临时目录的 `dsh-matt-flow-load.log` 确认版本号（macOS/Linux 在 `/tmp`，Windows 在 `%TEMP%`）。
 - **`client.js` 改动**：先 `node --check client.js`，再刷新页面。浏览器侧模块由 `dsh.client` 清单扫描后加载，不刷新拿不到新模块；注册成功后可在 `tool.call.toolview` 的 occupant 里看到 `flow_ask`。
 - **改完先跑一遍**：`npm test`（不依赖网络）。
+
+### 技能套件随插件升级
+
+`skills/` 里的 38 个技能是 [mattpocock/skills](https://github.com/mattpocock/skills) 的快照，且**每个被改过的文件都带着为 DSH 做的改写**。所以每次发新版前，先看上游有没有动过：
+
+```bash
+npm run sync-upstream:check     # 只比对，不写文件
+```
+
+脚本做三方比对，而不是拿上游覆盖我们：
+
+| 情况 | 结果 |
+|---|---|
+| 上游没动 | 不管 |
+| 上游动了、我们没改过这个文件 | 自动取上游版本 |
+| **两边都改了** | 停在冲突，把上游版本写成 `<文件>.upstream-new` 放在旁边 |
+| 上游新增了技能/文件 | 拷进来，标记需要做 DSH 改写 |
+| 上游删了某个文件 | 列出来，由人决定是否跟着删 |
+
+基线记在 `.upstream/baseline.json`（按**上游路径**存哈希，所以改名/丢弃不会让它失效）。处理完冲突后：
+
+```bash
+rm skills/<...>/*.upstream-new      # 合并完就删掉侧边文件
+npm run sync-upstream              # 取安全更新并刷新基线
+npm test                           # 会拦住残留的 .upstream-new
+```
+
+`npm test` 里有五道针对这套机制的检查：基线完整、每个打包技能都能追溯回上游、manifest 里的文件没有丢失、没有残留冲突侧边文件、脚本和基线对改名/丢弃列表的认知一致。
+
+已知的本地改写清单同时记在 [`skills/ATTRIBUTION.md`](skills/ATTRIBUTION.md) —— 冲突时先看它，库里逐条列了「改了什么、为什么」。
 
 
 ## 外部依赖与权限

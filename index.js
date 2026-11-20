@@ -25,7 +25,7 @@ import { join } from 'node:path'
 export const name = 'matt-flow'
 
 /** Bumped with package.json; the startup breadcrumbs carry it so a stale module is visible. */
-const PLUGIN_VERSION = '0.10.0'
+const PLUGIN_VERSION = '0.11.0'
 
 /** Startup breadcrumbs, so a "never started" report can be told apart from a silent no-op. */
 const LOG_DIR = tmpdir()
@@ -151,7 +151,7 @@ Reading the repo's conventions is expected (\`AGENTS.md\`, \`docs/agents/*\`, an
 
 Model-invocable — load them with the \`skill\` tool: \`grilling\`, \`tdd\`, \`code-review\`, \`codebase-design\`, \`domain-modeling\`, \`diagnosing-bugs\`, \`prototype\`, \`research\`, \`pr\`, \`git-guardrails\`, \`migrate-to-shoehorn\`, \`scaffold-exercises\`, \`setup-pre-commit\`, \`wizard\`, \`writing-for-agents\`.
 
-User-only — the model cannot load these; only the user can type them: \`/ask-matt\`, \`/grill-with-docs\`, \`/grill-me\`, \`/to-spec\`, \`/to-tickets\`, \`/implement\`, \`/implement-spec\`, \`/triage\`, \`/wayfinder\`, \`/improve-codebase-architecture\`, \`/handoff\`, \`/handoff-agent\`, \`/retro\`, \`/wait-what\`, \`/teach\`, \`/loop-me\`, \`/chief-of-staff\`, \`/writing-beats\`, \`/writing-fragments\`, \`/writing-shape\`, \`/to-questionnaire\`, \`/software-factory\`, \`/setup-matt-pocock-skills\`, \`/setup-ts-deep-modules\`.
+User-only — the model cannot load these; only the user can type them: \`/ask-matt\`, \`/grill-with-docs\`, \`/grill-me\`, \`/to-spec\`, \`/to-tickets\`, \`/implement\`, \`/implement-spec\`, \`/triage\`, \`/wayfinder\`, \`/improve-codebase-architecture\`, \`/handoff\`, \`/handoff-agent\`, \`/retro\`, \`/wait-what\`, \`/teach\`, \`/loop-me\`, \`/chief-of-staff\`, \`/writing-beats\`, \`/writing-fragments\`, \`/writing-shape\`, \`/to-questionnaire\`, \`/setup-matt-pocock-skills\`, \`/setup-ts-deep-modules\`.
 
 Never claim to have run a user-only skill. Either do the equivalent work with the primitives, or name the command and ask the user to run it.
 

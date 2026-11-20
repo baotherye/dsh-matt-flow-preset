@@ -42,7 +42,7 @@ const dirs = readdirSync(skillsRoot, { withFileTypes: true })
   .sort()
 
 test('every bundled skill has DSH-legal frontmatter', () => {
-  assert.ok(dirs.length >= 39, `expected the full suite, found ${dirs.length}`)
+  assert.ok(dirs.length >= 38, `expected the full suite, found ${dirs.length}`)
   for (const dir of dirs) {
     const skill = readSkill(dir)
     assert.ok(skill, `${dir}: no YAML frontmatter`)
@@ -78,9 +78,6 @@ test('no skill still targets Claude Code', () => {
       .filter((f) => String(f).endsWith('.md') || String(f).endsWith('.sh'))
     for (const file of files) {
       const rel = join(dir, String(file))
-      if (rel === join('software-factory', 'OBSERVABILITY-PLATFORMS.md')) continue // survey content
-      if (rel === join('software-factory', 'RUNNERS.md')) continue
-      if (rel === join('software-factory', 'TICKET-TRACKERS.md')) continue
       // Explaining WHY DSH needs a different mechanism is the point of this
       // skill; what matters is that it does not tell the agent to use one.
       if (rel === join('git-guardrails', 'SKILL.md')) continue
