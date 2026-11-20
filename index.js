@@ -190,7 +190,7 @@ Prefer \`flow_ask\` over the built-in \`ask_user_question\` whenever an answer n
 
 ## Gates
 
-\`flow_stage\` owns the phase. Call it with \`action: "status"\` before starting a phase, and \`action: "advance"\` only when that phase's exit criterion is true; it refuses skipped stages and missing artifacts. Stages: grill → spec → tickets → implement → done. Review is not a stage: a ticket is reviewed and committed as it is finished, and a subagent may review while the next ticket is already under way. There is no separate "idea" stage either: a feature enters at \`grill\`.
+\`flow_stage\` owns the phase. Call it with \`action: "status"\` before starting a phase, and \`action: "advance"\` only when that phase's exit criterion is true; it refuses skipped stages and missing artifacts. When a session picks up work another one started — after \`handoff\`, or in a fresh context window — call \`action: "resume"\` instead of replaying the earlier phases: it reads the files on disk and records the stage they prove, and it never moves the record backwards. Stages: grill → spec → tickets → implement → done. Review is not a stage: a ticket is reviewed and committed as it is finished, and a subagent may review while the next ticket is already under way. There is no separate "idea" stage either: a feature enters at \`grill\`.
 
 Leaving \`grill\` for \`spec\` needs both the settled decisions in your evidence and \`docs/agents/issue-tracker.md\`. Without that file the step is refused; write it, defaulting to local markdown.
 
@@ -269,6 +269,26 @@ async function isFileReady(file, minChars) {
 }
 
 /**
+ * Infer the stage a feature has actually reached from the files it left behind.
+ *
+ * Only feature-level artifacts count. The repo configuration says the repo is
+ * set up, not that this feature passed grill, so it is deliberately ignored.
+ * @param {string} dir absolute feature directory
+ * @returns {Promise<{stage: string, found: string[]}>} the proven stage and its evidence
+ */
+async function inferStage(dir) {
+  const tickets = await countTickets(join(dir, 'issues'))
+  const hasSpec = await isFileReady(join(dir, 'spec.md'), SPEC_MIN_CHARS)
+  const hasDecisions = await isFileReady(join(dir, 'decisions.md'), 1)
+  const found = []
+  if (hasDecisions) found.push('decisions.md')
+  if (hasSpec) found.push('spec.md')
+  if (tickets > 0) found.push(`issues (${tickets})`)
+  const stage = tickets > 0 ? 'implement' : hasSpec ? 'tickets' : hasDecisions ? 'spec' : 'grill'
+  return { stage, found }
+}
+
+/**
  * Evaluate the exit criterion for entering a stage.
  * @param {string} target stage being entered
  * @param {string} cwd repository directory the session works in
@@ -331,8 +351,8 @@ const TOOL_PARAMETERS = {
   properties: {
     action: {
       type: 'string',
-      enum: ['status', 'advance'],
-      description: 'status reads the phase and the precondition for the next stages; advance moves it one stage (or back for rework).'
+      enum: ['status', 'advance', 'resume'],
+      description: 'status reads the phase and the precondition for the next stages; advance moves it one stage (or back for rework); resume reads the artifacts on disk and records the stage they prove, for work a previous session did.'
     },
     feature: {
       type: 'string',
@@ -360,6 +380,8 @@ const TOOL_OUTPUT_SCHEMA = {
     next: { type: 'string' },
     path: { type: 'string' },
     moved: { type: 'boolean' },
+    resumed: { type: 'boolean' },
+    found: { type: 'array', items: { type: 'string' } },
     repoReady: { type: 'boolean' },
     gates: {
       type: 'array',
@@ -386,7 +408,7 @@ function buildTool(ctx) {
   return {
     name: 'flow_stage',
     description:
-      'Own the development phase of one feature and the precondition for each next stage. Call with action "status" before starting a phase, and action "advance" only once that phase is genuinely finished. Forward moves are one stage at a time; moving back for rework is allowed. Artifacts live under .scratch/<feature>/ (spec.md, issues/NN-slug.md, flow.json).',
+      'Own the development phase of one feature and the precondition for each next stage. Call with action "status" before starting a phase, and action "advance" only once that phase is genuinely finished. Pick up work another session started with action "resume": it reads spec.md, decisions.md and issues/ and records the stage they prove. Forward moves are one stage at a time; moving back for rework is allowed. Artifacts live under .scratch/<feature>/ (spec.md, issues/NN-slug.md, flow.json).',
     parameters: TOOL_PARAMETERS,
     output: {
       schema: TOOL_OUTPUT_SCHEMA,
@@ -401,6 +423,8 @@ function buildTool(ctx) {
         feature: value.feature,
         stage: value.stage,
         next: value.next ?? null,
+        resumed: value.resumed === true,
+        found: value.found ?? [],
         repoReady: value.repoReady !== false,
         gates: value.gates,
       }),
@@ -457,6 +481,47 @@ function buildTool(ctx) {
         mark(APPLY_LOG, `initialised repo: ${init.written.join(', ')}`)
       }
       const stage = normalizeStage(state?.stage)
+
+      if (args.action === 'resume') {
+        // Handoff case: another session (or another machine) did the earlier
+        // phases and left their files behind. The record is derived from what is
+        // on disk instead of making the model replay stages that already
+        // happened. It only ever moves forward: artifacts can lag behind the
+        // record, never prove that work was undone.
+        const inferred = await inferStage(root)
+        const from = STAGES.indexOf(stage)
+        const to = STAGES.indexOf(inferred.stage)
+        const target = to > from ? inferred.stage : stage
+        const moved = target !== stage
+        const now = new Date().toISOString()
+        const history = Array.isArray(state?.history) ? state.history : []
+        if (moved || !state) {
+          history.push({
+            from: state ? stage : null,
+            to: target,
+            at: now,
+            evidence: `resumed from ${inferred.found.join(', ') || 'an empty feature directory'}`,
+          })
+        }
+        await mkdir(root, { recursive: true })
+        await writeFile(
+          stateFile,
+          JSON.stringify({ feature, stage: target, updatedAt: now, history }, null, 2) + '\n',
+          'utf8'
+        )
+        const next = STAGES[STAGES.indexOf(target) + 1]
+        return {
+          feature,
+          stage: target,
+          ...(next ? { next } : {}),
+          path: stateFile,
+          moved,
+          resumed: true,
+          found: inferred.found,
+          repoReady,
+          gates: await describeGates(target, cwd, root)
+        }
+      }
 
       if (args.action === 'status') {
         // First contact with a feature creates its record. The flow has no
@@ -983,6 +1048,8 @@ const FLOW_PROJECTION = {
         feature: payload.feature,
         stage,
         next: payload.next ?? (STAGES[index + 1] ?? null),
+        resumed: payload.resumed === true,
+        found: Array.isArray(payload.found) ? payload.found : [],
         repoReady: payload.repoReady !== false,
         gates: Array.isArray(payload.gates) ? payload.gates : [],
       },

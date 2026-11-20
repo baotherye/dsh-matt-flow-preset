@@ -96,6 +96,27 @@
 
 前置条件只校验**能校验的部分**（文件是否存在、内容是否够量、evidence 是否非空）。它不假装验证"测试真跑过了"——那句证据由模型自己写，你能在 `flow.json` 的 history 里看到它。
 
+### 接手别人做了一半的活
+
+如果规范、任务单是在别处写好的（另一个会话、另一台机器、或者先跑 `/to-tickets` 再 `/handoff`），不需要在这个会话里把前几个阶段重演一遍。让模型调用：
+
+```
+flow_stage { action: "resume", feature: "<slug>" }
+```
+
+它读 `.scratch/<slug>/` 下的文件，倒推已经走到哪：
+
+| 磁盘上有 | 记为 |
+|---|---|
+| `issues/*.md` 至少 1 个 | `implement` |
+| `spec.md` ≥ 200 字符 | `tickets` |
+| `decisions.md` | `spec` |
+| 都没有 | `grill` |
+
+只往前推，不往回退：记录已经是 `done` 时再 resume，仍然是 `done`。来源会写进 `flow.json` 的 history，形如 `resumed from spec.md, issues (2)`。
+
+两条限制：只看 `.scratch/<slug>/` 里的文件，`docs/agents/issue-tracker.md` 这类仓库级配置不算进度；如果那边的任务单落在 GitHub Issues 而不是本地 markdown，这里读不到，resume 会停在 `spec`，需要先把单子导成 `.scratch/<slug>/issues/NN-slug.md`。
+
 ### 为什么 spec 要求先记下 issue tracker
 
 Matt 的套件有一条前置：`/setup-matt-pocock-skills`，用来定下 issue 放哪（GitHub / GitLab / 本地 markdown）、triage 标签词表、以及 `CONTEXT.md` 与 ADR 的目录布局，产出写进 `docs/agents/*.md` 并在 CLAUDE.md/AGENTS.md 里留一个 `## Agent skills` 块。
@@ -202,6 +223,7 @@ npx -y skills@latest add mattpocock/skills -g -s '*' -y
 - **不接管模型行为**：提示词是强约束、不是硬约束。真正的强制只有 `flow_stage` 的前置条件——模型完全可以绕过它直接改代码。要更强的约束，得再加 `ctx.tools.guard()`。
 - **预设即快照**：插件集复制自官方 `standard` 预设。DSH 升级后 `standard` 若增删插件，这个预设不会自动跟随；升级后建议对照 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 同步一次。
 - **UI 有限**：只有一个状态胶囊（输入框工具行）+ 决策卡，没有任务看板。
+- **resume 只认本地文件**：它按 `.scratch/<feature>/` 里的 `decisions.md`、`spec.md`、`issues/*.md` 推断阶段。任务单若在 GitHub Issues 或 Linear 上，读不到，只能停在 `spec`。
 - **工具定义用普通 JSON Schema**：没有用 `defineTool()`，因为插件从工作区链接安装时解析不到 `@deepseek-ai/*`。发布为 npm 包后可以改回。
 - **未在 Windows 上实测**：已按平台适配日志目录、`npx.cmd`、`cmd.exe` 兜底和 `--copy`，但没有真机验证。
 

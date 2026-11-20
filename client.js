@@ -469,6 +469,14 @@ window.__ModuleLoader__.load({
               className: 'mf-pop-gate',
             }, isCurrent ? '当前阶段' : isPast ? '已通过' : '未开始'),
             h('div', { key: 'doc', className: 'mf-pop-doc' }, STAGE_DOC[pickedStage?.id] ?? ''),
+            // A resumed record was derived from files, not walked through here;
+            // say so once, on the stage it landed on.
+            isCurrent && flow.resumed
+              ? h('div', { key: 'resumed', className: 'mf-pop-repo' },
+                flow.found && flow.found.length > 0
+                  ? `从磁盘恢复：${flow.found.join('、')}`
+                  : '从磁盘恢复：这个功能还没有留下任何文件')
+              : null,
             flow.repoReady === false
               ? h('div', { key: 'repo', className: 'mf-pop-repo' },
                 '仓库未初始化：issue 放在哪还没写进 docs/agents/issue-tracker.md')
