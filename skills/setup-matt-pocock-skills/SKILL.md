@@ -75,9 +75,9 @@ Let them edit before writing.
 
 **Pick the file to edit:**
 
-- If `CLAUDE.md` exists, edit it.
-- Else if `AGENTS.md` exists, edit it.
-- If neither exists, ask the user which one to create; don't pick for them.
+- If `AGENTS.md` exists, edit it. DSH reads `AGENTS.md` first, so it is the file the agent will actually load.
+- Else if `CLAUDE.md` exists, edit it: DSH falls back to `CLAUDE.md`, so a repo that keeps its instructions there still works.
+- If neither exists, create `AGENTS.md`; don't pick a different name for them.
 
 Never create `AGENTS.md` when `CLAUDE.md` already exists (or vice versa); always edit the one that's already there.
 

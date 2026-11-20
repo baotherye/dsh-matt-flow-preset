@@ -149,15 +149,15 @@ Reading the repo's conventions is expected (\`AGENTS.md\`, \`docs/agents/*\`, an
 
 ## What you can and cannot load
 
-Model-invocable — load them with the \`skill\` tool: \`grilling\`, \`tdd\`, \`code-review\`, \`codebase-design\`, \`domain-modeling\`, \`diagnosing-bugs\`, \`prototype\`, \`research\`, \`pr\`, \`resolving-merge-conflicts\`, \`migrate-to-shoehorn\`, \`setup-pre-commit\`.
+Model-invocable — load them with the \`skill\` tool: \`grilling\`, \`tdd\`, \`code-review\`, \`codebase-design\`, \`domain-modeling\`, \`diagnosing-bugs\`, \`prototype\`, \`research\`, \`pr\`, \`git-guardrails\`, \`migrate-to-shoehorn\`, \`scaffold-exercises\`, \`setup-pre-commit\`, \`wizard\`, \`writing-for-agents\`.
 
-User-only — the model cannot load these; only the user can type them: \`/ask-matt\`, \`/grill-with-docs\`, \`/grill-me\`, \`/to-spec\`, \`/to-tickets\`, \`/implement\`, \`/triage\`, \`/wayfinder\`, \`/improve-codebase-architecture\`, \`/handoff\`, \`/retro\`, \`/wait-what\`.
+User-only — the model cannot load these; only the user can type them: \`/ask-matt\`, \`/grill-with-docs\`, \`/grill-me\`, \`/to-spec\`, \`/to-tickets\`, \`/implement\`, \`/implement-spec\`, \`/triage\`, \`/wayfinder\`, \`/improve-codebase-architecture\`, \`/handoff\`, \`/handoff-agent\`, \`/retro\`, \`/wait-what\`, \`/teach\`, \`/loop-me\`, \`/chief-of-staff\`, \`/writing-beats\`, \`/writing-fragments\`, \`/writing-shape\`, \`/to-questionnaire\`, \`/software-factory\`, \`/setup-matt-pocock-skills\`, \`/setup-ts-deep-modules\`.
 
 Never claim to have run a user-only skill. Either do the equivalent work with the primitives, or name the command and ask the user to run it.
 
 ## When the suite is missing
 
-If the catalog above does not list them, the suite is not installed. \`flow_stage\` closes that gap itself: on first use it asks the user to approve installing the missing skills, then installs them. You never run the install and never hand over a command unless it fails; if it does, report the failure and the command \`flow_skills\` returns. Until the skills are there, do not start the flow, and never substitute your own memory for a skill you could not load.
+The skills ship inside the plugin, so they are present the moment it is installed: nothing is downloaded, and there is no install step you could run. If the catalog above does not list them, the plugin package is installed partially — a broken installation, not a machine waiting to be provisioned. \`flow_stage\` refuses in that case rather than offering a repair, because no command would help. Report exactly what it says and ask the user to reinstall the plugin. Never substitute your own memory for a skill you could not load.
 
 ## Route
 
@@ -172,12 +172,11 @@ If the catalog above does not list them, the suite is not installed. \`flow_stag
 
 Initialisation is **not** your decision and not a question you put to the user: \`flow_stage\` performs it on first use.
 
-- Before it writes anything, the user gets an approval prompt that names the exact work: the skills to install and the files to create. If they refuse, nothing is written and the call fails — say what stopped and wait for their instruction rather than retrying.
-- It installs any missing skills first, because the templates it copies live in that package.
-- It writes the per-repo configuration \`setup-matt-pocock-skills\` scaffolds: \`docs/agents/issue-tracker.md\`, \`docs/agents/domain.md\`, \`docs/agents/triage-labels.md\` when the triage skill is installed, and the \`## Agent skills\` block in CLAUDE.md (or AGENTS.md).
+- Before it writes anything, the user gets an approval prompt that names the exact work: the files it will create. If they refuse, nothing is written and the call fails — say what stopped and wait for their instruction rather than retrying.
+- It writes the per-repo configuration \`setup-matt-pocock-skills\` scaffolds: \`docs/agents/issue-tracker.md\`, \`docs/agents/domain.md\`, \`docs/agents/triage-labels.md\` when the triage skill is installed, and the \`## Agent skills\` block in \`AGENTS.md\` (or \`CLAUDE.md\` when the repo already uses it — DSH reads AGENTS.md first).
 - The issue tracker is fixed to local markdown under \`.scratch/\`. That is the only place this flow departs from asking.
 
-If the call comes back with an error, read it: it says whether the user refused, the install failed, or the templates are missing.
+If the call comes back with an error, read it: it says whether the user refused, the plugin install is incomplete, or the templates are missing.
 
 ## Main flow
 
