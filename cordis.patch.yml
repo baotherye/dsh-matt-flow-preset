@@ -9,7 +9,7 @@
 # Nothing here touches session behaviour outside that preset.
 - insert:
     - id: matt-flow-ui
-      name: 'dsh-matt-flow'
+      name: '@baotherye/dsh-matt-flow-preset'
       config:
         uiOnly: true
 - insert:
@@ -49,6 +49,14 @@
             name: '@deepseek-ai/dsh-tool-schedule'
           - id: skill-filesystem
             name: '@deepseek-ai/dsh-skill-filesystem'
+            config:
+              # Matt skills live in a preset-private directory so other agent
+              # presets never see them. This expression mirrors index.js:
+              #   DSH_HOME || ~/.dsh  →  /dsh-matt-flow-preset/.agents/skills
+              # includeDefaultRoots stays true so preset-matt still discovers
+              # the user's own skills; custom dirs (rank 300) win name clashes.
+              customSkillDirs:
+                - !!js process.getBuiltinModule('node:path').join(process.env.DSH_HOME || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), '.dsh'), 'dsh-matt-flow-preset', '.agents', 'skills')
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
           - id: command-goal
@@ -138,4 +146,4 @@
             name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: true
           - id: matt-flow
-            name: 'dsh-matt-flow'
+            name: '@baotherye/dsh-matt-flow-preset'

@@ -5,7 +5,8 @@ import { mkdtemp } from 'node:fs/promises'
 
 // The flow refuses to run without its skills, so the suite is faked here rather
 // than required on the machine: tests must not depend on what the user installed.
-const agentsHome = await mkdtemp(join(tmpdir(), 'agents-'))
+const dshHome = await mkdtemp(join(tmpdir(), 'dshhome-'))
+const skillsDir = join(dshHome, 'dsh-matt-flow-preset', '.agents', 'skills')
 const skillNames = [
   'ask-matt', 'grilling', 'grill-me', 'grill-with-docs', 'domain-modeling',
   'triage', 'wayfinder', 'to-spec', 'to-tickets', 'implement', 'tdd',
@@ -15,22 +16,21 @@ const skillNames = [
   'setup-pre-commit',
 ]
 for (const name of skillNames) {
-  await mkdir(join(agentsHome, 'skills', name), { recursive: true })
-  await writeFile(join(agentsHome, 'skills', name, 'SKILL.md'), `# ${name}\n`, 'utf8')
+  await mkdir(join(skillsDir, name), { recursive: true })
+  await writeFile(join(skillsDir, name, 'SKILL.md'), `# ${name}\n`, 'utf8')
 }
 // The initialiser copies these three templates out of the skill package, so the
 // fake package has to carry stand-ins with the same shape.
-const setupDir = join(agentsHome, 'skills', 'setup-matt-pocock-skills')
+const setupDir = join(skillsDir, 'setup-matt-pocock-skills')
 await writeFile(join(setupDir, 'issue-tracker-local.md'),
   '# Issue tracker: Local Markdown\n\nIssues and specs live in `.scratch/`.\n\n## Conventions\n\n- one directory per feature\n', 'utf8')
 await writeFile(join(setupDir, 'domain.md'),
   '# Domain Docs\n\nRead `CONTEXT.md` and `docs/adr/`.\n', 'utf8')
 await writeFile(join(setupDir, 'triage-labels.md'),
   '# Triage Labels\n\n| role | label |\n|---|---|\n', 'utf8')
-process.env.DSH_AGENTS_HOME = agentsHome
-// The skills CLI resolves its own global directory from HOME, not from
-// DSH_AGENTS_HOME, so any test that reaches the installer would write into the
-// real ~/.agents/skills. Tests never install.
+process.env.DSH_HOME = dshHome
+// Installs are always disabled in tests: the CLI would otherwise use network
+// and write into the private tree.
 process.env.DSH_MATT_FLOW_NO_INSTALL = '1'
 
 const { apply } = await import('../index.js')

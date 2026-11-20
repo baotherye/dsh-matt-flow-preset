@@ -7,8 +7,9 @@
  *   2. the `flow_stage` tool, which owns the phase of one feature and refuses
  *      skipped stages or missing artifacts.
  *
- * The skills themselves stay where they are (~/.agents/skills); this plugin never
- * copies or edits them, so `npx skills update` cannot drift it.
+ * The skills themselves live in a preset-private directory that no other agent
+ * preset scans; this plugin never copies or edits them, so `npx skills update`
+ * cannot drift it.
  *
  * This module deliberately imports only Node builtins: it is installed as a
  * `link:` package outside the profile, where bare `@deepseek-ai/*` specifiers do
@@ -25,7 +26,7 @@ import { join } from 'node:path'
 export const name = 'matt-flow'
 
 /** Bumped with package.json; the startup breadcrumbs carry it so a stale module is visible. */
-const PLUGIN_VERSION = '0.7.6'
+const PLUGIN_VERSION = '0.8.0'
 
 /** Startup breadcrumbs, so a "never started" report can be told apart from a silent no-op. */
 const LOG_DIR = tmpdir()
@@ -66,6 +67,19 @@ const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 
 /** Bound on a skill install, long enough for a slow network and short enough to fail. */
 const INSTALL_TIMEOUT_MS = 4 * 60_000
+
+/**
+ * The skills CLI's project-scope install writes to `<cwd>/.agents/skills`, which
+ * is private to this preset when we give it a dedicated cwd. A global
+ * (`-g -a universal`) install would instead write to the shared
+ * `$HOME/.agents/skills`, which EVERY agent preset scans — that is exactly the
+ * cross-preset leak this fork exists to avoid.
+ *
+ * The same path is declared in cordis.patch.yml as preset-matt's
+ * `customSkillDirs` (evaluated with `!!js`). Keep the two formulas identical.
+ */
+const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh')
+const MATT_SKILLS_HOME = join(DSH_HOME, 'dsh-matt-flow-preset')
 
 function mark(file, note) {
   try {
@@ -132,7 +146,7 @@ const EVIDENCE_MIN_CHARS = 8
 
 const FLOW_SECTION = `# Development workflow (Matt Pocock skill suite)
 
-This deployment carries the user's engineering skills under \`~/.agents/skills\`. Treat that method as the default way to do feature work.
+This deployment carries the user's engineering skills in a preset-private directory. Treat that suite as the default way to do feature work.
 
 ## This flow governs, not the repo's other processes
 
@@ -684,10 +698,13 @@ function buildAskTool() {
   }
 }
 
-/** Where the skills CLI installs user-level skills on this machine. */
+/**
+ * The preset-private skills directory. We never fall back to the shared
+ * ~/.agents/skills: doing so would let other presets see this suite. This is
+ * `<privateHome>/.agents/skills`, the project-scope target of the skills CLI.
+ */
 function skillsHome() {
-  const agents = process.env.DSH_AGENTS_HOME || join(homedir(), '.agents')
-  return join(agents, 'skills')
+  return join(MATT_SKILLS_HOME, '.agents', 'skills')
 }
 
 /**
@@ -758,8 +775,8 @@ function consentText(missing, repoReady) {
   const en = []
   const zh = []
   if (missing.length > 0) {
-    en.push(`install ${missing.length} missing skill${missing.length === 1 ? '' : 's'} (${missing.join(', ')}) into ~/.agents/skills`)
-    zh.push(`安装缺失的 ${missing.length} 个技能到 ~/.agents/skills（${missing.join(', ')}）`)
+    en.push(`install ${missing.length} missing skill${missing.length === 1 ? '' : 's'} (${missing.join(', ')}) into the preset-private skills directory (${MATT_SKILLS_HOME}/.agents/skills)`)
+    zh.push(`安装缺失的 ${missing.length} 个技能到预设私有目录（${MATT_SKILLS_HOME}/.agents/skills，${missing.join(', ')}）`)
     parts.push(installCommand(missing))
   }
   if (!repoReady) {
@@ -861,11 +878,16 @@ function initialiseRepo(cwd) {
  * @returns {string} a single shell command
  */
 function installCommand(skills) {
-  // `--skill` takes space-separated names, not a comma list. `--agent universal`
-  // targets the shared ~/.agents/skills directory this plugin reads, and is what
-  // keeps the install from also linking into every other agent's directory the
-  // way `--agent '*'` does. `-y` stops the CLI from prompting.
-  return `${NPX} -y skills@latest add ${SKILLS_PACKAGE} -g -a universal -s ${skills.join(' ')} -y`
+  // Project scope (no `-g`) makes the CLI write to `<cwd>/.agents/skills`. We
+  // `cd` into the private home so that directory is private to this preset —
+  // the command is self-contained both for the child spawn and for a user
+  // running it by hand. A global install would hit the shared ~/.agents/skills
+  // that every preset scans: the cross-preset leak this fork avoids.
+  // `--skill` takes space-separated names; `-a universal` avoids linking into
+  // each agent's own directory; `-y` stops the CLI from prompting.
+  const dir = `"${MATT_SKILLS_HOME}"`
+  const cd = process.platform === 'win32' ? `cd /d ${dir} && ` : `cd ${dir} && `
+  return `${cd}${NPX} -y skills@latest add ${SKILLS_PACKAGE} -a universal -s ${skills.join(' ')} -y`
 }
 
 /**
@@ -885,12 +907,19 @@ function installSkills(missing) {
   if (installInFlight) return installInFlight
 
   const line = `${installCommand(missing)}${process.platform === 'win32' ? ' --copy' : ''}`
-  mark(APPLY_LOG, `installing ${missing.length} skill(s): ${line}`)
+  mark(APPLY_LOG, `installing ${missing.length} skill(s) in ${MATT_SKILLS_HOME}: ${line}`)
+
+  // The CLI needs its private cwd to exist before it writes ./.agents/skills.
+  try {
+    mkdirSync(MATT_SKILLS_HOME, { recursive: true })
+  } catch (error) {
+    return Promise.resolve({ ok: false, reason: `cannot create private skills home: ${String(error && error.message)}` })
+  }
 
   installInFlight = new Promise((resolve) => {
     let child
     try {
-      child = spawn(line, { shell: true, stdio: 'ignore', env: process.env })
+      child = spawn(line, { shell: true, stdio: 'ignore', env: process.env, cwd: MATT_SKILLS_HOME })
     } catch (error) {
       resolve({ ok: false, reason: String(error && error.message) })
       return

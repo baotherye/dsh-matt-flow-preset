@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// The plugin reads the agents home once, at import time, so every case runs in
-// its own child process with its own DSH_AGENTS_HOME.
+// The plugin reads the DSH home once, at import time, so every case runs in
+// its own child process with its own DSH_HOME.
 const here = dirname(fileURLToPath(import.meta.url))
 const entry = join(here, '..', 'index.js')
 
@@ -22,14 +22,15 @@ const TRACKER_BODY = '# Issue tracker\n\nLocal markdown files under .scratch, on
 
 function fakeHome(skills) {
   const home = mkdtempSync(join(tmpdir(), 'matt-home-'))
-  // DSH_AGENTS_HOME is the agents root; the CLI installs into its skills/ child.
-  mkdirSync(join(home, 'skills'), { recursive: true })
+  // The private skills root is <DSH_HOME>/dsh-matt-flow-preset/.agents/skills.
+  const skillsDir = join(home, 'dsh-matt-flow-preset', '.agents', 'skills')
+  mkdirSync(skillsDir, { recursive: true })
   for (const name of skills) {
-    mkdirSync(join(home, 'skills', name), { recursive: true })
-    writeFileSync(join(home, 'skills', name, 'SKILL.md'), `# ${name}\n`, 'utf8')
+    mkdirSync(join(skillsDir, name), { recursive: true })
+    writeFileSync(join(skillsDir, name, 'SKILL.md'), `# ${name}\n`, 'utf8')
   }
   // The setup skill ships the templates the plugin copies into a repository.
-  const setup = join(home, 'skills', 'setup-matt-pocock-skills')
+  const setup = join(skillsDir, 'setup-matt-pocock-skills')
   if (skills.includes('setup-matt-pocock-skills')) {
     writeFileSync(join(setup, 'issue-tracker-local.md'), TRACKER_BODY, 'utf8')
     writeFileSync(join(setup, 'domain.md'), '# Domain\n\nGlossary and ADR pointers.\n', 'utf8')
@@ -78,7 +79,7 @@ console.log('RESULT:' + JSON.stringify({ asked, stage: result && result.stage, e
 `
   const out = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
     cwd: repo,
-    env: { ...process.env, DSH_AGENTS_HOME: home, DSH_MATT_FLOW_NO_INSTALL: '1' },
+    env: { ...process.env, DSH_HOME: home, DSH_MATT_FLOW_NO_INSTALL: '1' },
     encoding: 'utf8',
   })
   const line = out.stdout.split('\n').find((l) => l.startsWith('RESULT:'))
@@ -143,7 +144,7 @@ console.log('RESULT:' + JSON.stringify({ error, tracker: existsSync(${JSON.strin
 `
   const out = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
     cwd: repo,
-    env: { ...process.env, DSH_AGENTS_HOME: home, DSH_MATT_FLOW_NO_INSTALL: '1' },
+    env: { ...process.env, DSH_HOME: home, DSH_MATT_FLOW_NO_INSTALL: '1' },
     encoding: 'utf8',
   })
   const line = out.stdout.split('\n').find((l) => l.startsWith('RESULT:'))

@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-// A fake agents home with no skills, so the module under test sees an
+// A fake DSH home with no skills, so the module under test sees an
 // unprovisioned machine. The probe runs in a child process because the plugin
 // reads the environment once, at import time.
 const here = dirname(fileURLToPath(import.meta.url))
@@ -27,9 +27,7 @@ try {
 `
 
 const result = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
-  // Without this the skills CLI installs into the real ~/.agents/skills: it
-  // honours HOME, not DSH_AGENTS_HOME, so a test would change the user's machine.
-  env: { ...process.env, DSH_AGENTS_HOME: '/nonexistent-agents-home-for-test', DSH_MATT_FLOW_NO_INSTALL: '1' },
+  env: { ...process.env, DSH_HOME: '/nonexistent-dsh-home-for-test', DSH_MATT_FLOW_NO_INSTALL: '1' },
   encoding: 'utf8',
 })
 

@@ -1,14 +1,16 @@
-# dsh-matt-flow
+# @baotherye/dsh-matt-flow-preset
 
-**主页**：https://github.com/yuwang/dsh-matt-flow
+**主页**：https://github.com/baotherye/dsh-matt-flow-preset
 
-把 [Matt Pocock Agent Skills](https://github.com/mattpocock/skills) 套件编成一条**带前置条件的开发工作流**，作为 DSH 的一个 agent 预设。技能从 `~/.agents/skills` 读取，缺了会自动安装。
+把 [Matt Pocock Agent Skills](https://github.com/mattpocock/skills) 套件编成一条**带前置条件的开发工作流**，作为 DSH 的一个 agent 预设。技能从**本预设私有的目录** `<DSH_HOME>/dsh-matt-flow-preset/.agents/skills` 读取（默认 `~/.dsh/dsh-matt-flow-preset/.agents/skills`），缺了会自动安装到那里。
+
+**关键隔离**：技能只挂在 `preset-matt`（工作流的 agent 预设）的 skill 发现根上；其他 agent 预设不会扫描这个私有目录，因此看不到这些技能。安装命令也刻意用项目作用域 + 私有 cwd，**不会**写进所有预设都会读取的共享 `~/.agents/skills`。
 
 它不复制、不改写任何技能；`npx skills update` 之后行为自动跟随上游。
 
 ---
 
-感谢你安装使用。如果它对你的工作有帮助，欢迎到 [GitHub 仓库](https://github.com/yuwang/dsh-matt-flow) 点一颗 **Star** —— 这是我继续维护它的主要动力。遇到问题或想要新功能，也欢迎在 [Issues](https://github.com/yuwang/dsh-matt-flow/issues) 里提。
+这是 [yuwang/dsh-matt-flow](https://github.com/yuwang/dsh-matt-flow) 的一个 fork，唯一改动是把 Matt 技能套件从共享目录隔离到仅本预设可见。感谢原作者。如果它对你的工作有帮助，欢迎到 [GitHub 仓库](https://github.com/baotherye/dsh-matt-flow-preset) 点一颗 **Star**。遇到问题或想要新功能，也欢迎在 [Issues](https://github.com/baotherye/dsh-matt-flow-preset/issues) 里提。
 
 ---
 
@@ -44,7 +46,7 @@
 
 子代理不限于评审——探查、搜索、跑测试、独立实现都可以。胶囊会把**当前正在运行的子代理**按各自的名字列出来，不管它们在做什么。
 
-它不是新的 AI 能力，而是把 Matt Pocock 那套技能串成有顺序、有产出的流程——技能本身仍然从 `~/.agents/skills` 读取，插件只负责编排。
+它不是新的 AI 能力，而是把 Matt Pocock 那套技能串成有顺序、有产出的流程——技能本身从本预设的私有目录读取，插件只负责编排。
 
 **什么时候用它**
 
@@ -130,13 +132,13 @@ Matt 的套件有一条前置：`/setup-matt-pocock-skills`，用来定下 issue
 从 npm 装（推荐，预构建，装得快）：
 
 ```bash
-dsh plugin add dsh-matt-flow
+dsh plugin add @baotherye/dsh-matt-flow-preset
 ```
 
 从 GitHub 装（拿到的是仓库最新代码，但需要本地构建）：
 
 ```bash
-dsh plugin add git+https://github.com/yuwang/dsh-matt-flow
+dsh plugin add git+https://github.com/baotherye/dsh-matt-flow-preset
 ```
 
 也可以在 DSH 的 Plugins 页面填上面任一地址。装完**重启一次**，再**新建会话**，在预设置换器里选「Matt 工程流 / Matt Flow」。
@@ -144,7 +146,7 @@ dsh plugin add git+https://github.com/yuwang/dsh-matt-flow
 也可以在本地开发时用目录安装：
 
 ```bash
-dsh plugin --profile desktop add /path/to/dsh-matt-flow
+dsh plugin --profile desktop add /path/to/dsh-matt-flow-preset
 ```
 
 已存在的会话不受影响：预设只在新建会话时装入。
@@ -153,7 +155,9 @@ dsh plugin --profile desktop add /path/to/dsh-matt-flow
 
 第一次进规范阶段前，仓库里需要有一份 `docs/agents/issue-tracker.md` 说明 issue 放在哪。没配过就跑一次 `/setup-matt-pocock-skills`，或者直接让模型按本地 markdown 写一份。
 
-技能套件（37 个）会在预设首次激活时自动安装到 `~/.agents/skills`，前提是机器上有 `node` 和 `npx`。装了什么、成没成功，让模型调 `flow_skills` 就能看到。
+技能套件（37 个）会在预设首次激活时自动安装到私有目录 `~/.dsh/dsh-matt-flow-preset/.agents/skills`（可用 `DSH_HOME` 改根），前提是机器上有 `node` 和 `npx`。装了什么、成没成功，让模型调 `flow_skills` 就能看到。
+
+如果你以前装过原版 `dsh-matt-flow`，技能可能残留在共享的 `~/.agents/skills` 里——那些副本对其他预设仍可见。建议手动删掉其中的 Matt 技能目录（如 `grilling`、`tdd`、`code-review` 等），本预设会使用私有目录里的新副本。
 
 ### 在哪里选
 
@@ -176,7 +180,7 @@ dsh plugin --profile desktop add /path/to/dsh-matt-flow
 
 - **`index.js` 改动**：必须重启 DSH。预设子树持有的模块在 Node 的 ESM 缓存里，`install_bundle` 会返回 `restart-required`（原因 `unmanaged-plugin`），热重载换不掉已加载的代码。重启后看系统临时目录的 `dsh-matt-flow-load.log` 确认版本号（macOS/Linux 在 `/tmp`，Windows 在 `%TEMP%`）。
 - **`client.js` 改动**：先 `node --check client.js`，再刷新页面。浏览器侧模块由 `dsh.client` 清单扫描后加载，不刷新拿不到新模块；注册成功后可在 `tool.call.toolview` 的 occupant 里看到 `flow_ask`。
-- **改完先跑一遍**：`npm test`（约 0.2 秒，43 条断言，不依赖网络）。
+- **改完先跑一遍**：`npm test`（不依赖网络）。
 
 
 ## 外部依赖与权限
@@ -187,20 +191,22 @@ dsh plugin --profile desktop add /path/to/dsh-matt-flow
 
 ### 它会启动子进程
 
-`flow_skills` 工具和预设激活时的自动准备会执行：
+`flow_stage` 的前置检查和预设激活时的自动准备会在私有 cwd 下执行（需要 `node`/`npx`）：
 
-```
-npx -y skills@latest add mattpocock/skills -g -s '*' -y
+```bash
+cd ~/.dsh/dsh-matt-flow-preset && npx -y skills@latest add mattpocock/skills -a universal -s <缺失的技能...> -y
 ```
 
-这会把 [mattpocock/skills](https://github.com/mattpocock/skills) 装进 `~/.agents/skills`，影响这台机器上**所有**读该目录的 agent（Claude Code 等）。
+- 这里**没有** `-g`：项目作用域让 CLI 写进 `~/.dsh/dsh-matt-flow-preset/.agents/skills`（仅本预设可见），而不是所有预设都扫描的共享 `~/.agents/skills`。原版用的正是 `-g`，会把技能装进共享目录——这是本 fork 修掉的跨预设泄漏。
+- `-a universal` 避免 CLI 额外链接到各个 agent 自己的技能目录。
+- `cordis.patch.yml` 把这个私有目录声明为 `preset-matt` 的 `customSkillDirs`；其他预设没有这项配置，永远不会扫描它。
 
 触发条件很窄：
 
-- 只在 7 个必需技能缺失时才执行
+- 只在 27 个必需技能中任何一个缺失时才执行
 - 失败后 24 小时内不再自动重试
-- 可用 `flow_skills` 查看状态、或手动重试
-- 不想让它执行，就别用这个预设；插件不会在预设之外运行
+- 可用 `flow_skills` 查看状态、拿到手动安装命令
+- 插件只在 `preset-matt` 下装载；其他预设不会启动它，也看不到这些技能
 
 **前提**：机器上要有 `node` 和 `npx`，且能访问 npm registry 与 GitHub。缺失时不会崩溃，只会把状态记为 `failed`。
 
@@ -211,7 +217,7 @@ npx -y skills@latest add mattpocock/skills -g -s '*' -y
 | `.scratch/<feature>/flow.json` | 阶段状态 |
 | `.scratch/<feature>/decisions.md`、`spec.md`、`issues/*.md` | 流程产物（由模型写，不是你手动维护） |
 | `docs/agents/issue-tracker.md` | 首次进规范阶段前要求存在的 tracker 说明 |
-| `~/.dsh/matt-flow-bootstrap.json` | 技能安装状态 |
+| `~/.dsh/dsh-matt-flow-preset/.agents/skills/` | Matt 技能套件（仅本预设可见，不污染共享目录） |
 | 系统临时目录下的 `dsh-matt-flow-*.log` | 启动打点与安装日志 |
 
 ### 权限范围
@@ -239,7 +245,7 @@ MIT，见 [LICENSE](./LICENSE)。
 ## 卸载
 
 ```bash
-dsh plugin --profile desktop remove dsh-matt-flow
+dsh plugin --profile desktop remove @baotherye/dsh-matt-flow-preset
 ```
 
 `.scratch/` 下的数据是你的，不会被清理。

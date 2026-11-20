@@ -1,5 +1,5 @@
 /**
- * Browser half of dsh-matt-flow: renders a `flow_ask` tool call as a decision
+ * Browser half of @baotherye/dsh-matt-flow-preset: renders a `flow_ask` tool call as a decision
  * card (options + free text per question) and submits the answers as the user's
  * next message.
  *
@@ -8,7 +8,7 @@
  * host theme tokens (`--dsw-alias-*`) so the card follows light and dark themes.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-matt-flow',
+  id: '@baotherye/dsh-matt-flow-preset',
   factory(require) {
     const React = require('react')
     const h = React.createElement
