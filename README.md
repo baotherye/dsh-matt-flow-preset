@@ -2,15 +2,15 @@
 
 **主页**：https://github.com/baotherye/dsh-matt-flow-preset
 
-把 [Matt Pocock Agent Skills](https://github.com/mattpocock/skills) 套件编成一条**带前置条件的开发工作流**，作为 DSH 的一个 agent 预设。技能从**本预设私有的目录** `<DSH_HOME>/dsh-matt-flow-preset/.agents/skills` 读取（默认 `~/.dsh/dsh-matt-flow-preset/.agents/skills`），缺了会自动安装到那里。
+把 [Matt Pocock Agent Skills](https://github.com/mattpocock/skills) 套件编成一条**带前置条件的开发工作流**，作为 DSH 的一个 agent 预设。**39 个技能随插件包一起分发**（在包的 `skills/` 目录里），装好插件就有，不需要下载、不需要 `npx`、不发任何网络请求。
 
-**关键隔离**：技能只挂在 `preset-matt`（工作流的 agent 预设）的 skill 发现根上；其他 agent 预设不会扫描这个私有目录，因此看不到这些技能。安装命令也刻意用项目作用域 + 私有 cwd，**不会**写进所有预设都会读取的共享 `~/.agents/skills`。
+**关键隔离**：只有 `preset-matt`（工作流的 agent 预设）把包内的 `skills/` 声明成自己的 skill 发现根（`customSkillDirs`）；其他 agent 预设没有这项配置，不会扫描它，因此看不到这些技能。全程不碰所有预设都会读取的共享 `~/.agents/skills`。
 
-它不复制、不改写任何技能；`npx skills update` 之后行为自动跟随上游。
+技能文本是打包时的快照，并针对 DSH 做了少量改写（来源与改动清单见 [`skills/ATTRIBUTION.md`](skills/ATTRIBUTION.md)，遵循上游 MIT 许可）。
 
 ---
 
-这是 [yuwang/dsh-matt-flow](https://github.com/yuwang/dsh-matt-flow) 的一个 fork，唯一改动是把 Matt 技能套件从共享目录隔离到仅本预设可见。感谢原作者。如果它对你的工作有帮助，欢迎到 [GitHub 仓库](https://github.com/baotherye/dsh-matt-flow-preset) 点一颗 **Star**。遇到问题或想要新功能，也欢迎在 [Issues](https://github.com/baotherye/dsh-matt-flow-preset/issues) 里提。
+这是 [yuwang/dsh-matt-flow](https://github.com/yuwang/dsh-matt-flow) 的一个 fork：把 Matt 技能套件从「运行时下载到共享目录」改成「随包分发且仅本预设可见」，并按 DSH 的实际机制改写了若干技能（见 `skills/ATTRIBUTION.md`）。感谢原作者。如果它对你的工作有帮助，欢迎到 [GitHub 仓库](https://github.com/baotherye/dsh-matt-flow-preset) 点一颗 **Star**。遇到问题或想要新功能，也欢迎在 [Issues](https://github.com/baotherye/dsh-matt-flow-preset/issues) 里提。
 
 ---
 
@@ -155,9 +155,15 @@ dsh plugin --profile desktop add /path/to/dsh-matt-flow-preset
 
 第一次进规范阶段前，仓库里需要有一份 `docs/agents/issue-tracker.md` 说明 issue 放在哪。没配过就跑一次 `/setup-matt-pocock-skills`，或者直接让模型按本地 markdown 写一份。
 
-技能套件（37 个）会在预设首次激活时自动安装到私有目录 `~/.dsh/dsh-matt-flow-preset/.agents/skills`（可用 `DSH_HOME` 改根），前提是机器上有 `node` 和 `npx`。装了什么、成没成功，让模型调 `flow_skills` 就能看到。
+技能套件（39 个）就在插件的 `skills/` 目录里，随包安装完成即生效，**没有安装步骤、没有网络请求、也没有子进程**。让模型调 `flow_skills` 可以确认它们的位置和完整性。
 
-如果你以前装过原版 `dsh-matt-flow`，技能可能残留在共享的 `~/.agents/skills` 里——那些副本对其他预设仍可见。建议手动删掉其中的 Matt 技能目录（如 `grilling`、`tdd`、`code-review` 等），本预设会使用私有目录里的新副本。
+如果你以前装过原版 `dsh-matt-flow` 或本包的 0.8.x，技能可能残留在共享的 `~/.agents/skills`（旧版）或 `~/.dsh/dsh-matt-flow-preset/.agents/skills`（0.8.x 的私有目录）里。0.9.0 起两者都不再使用，可以整个删掉：
+
+```bash
+rm -rf ~/.dsh/dsh-matt-flow-preset
+```
+
+共享目录里的旧副本（如 `~/.agents/skills/grilling`）请留意：它们对其他预设仍可见，建议一并清理。本预设用的是包内的新副本，不受影响。
 
 ### 在哪里选
 
@@ -187,28 +193,21 @@ dsh plugin --profile desktop add /path/to/dsh-matt-flow-preset
 
 ### 运行时依赖
 
-**没有任何 npm 依赖。** 插件只使用 Node 内置模块（`fs`、`path`、`os`、`child_process`），浏览器侧只用宿主提供的 React。
+**没有任何 npm 依赖。** 插件只使用 Node 内置模块（`fs`、`path`、`os`），浏览器侧只用宿主提供的 React。
 
-### 它会启动子进程
+### 它不启动任何子进程
 
-`flow_stage` 的前置检查和预设激活时的自动准备会在私有 cwd 下执行（需要 `node`/`npx`）：
+0.9.0 起，插件不再调用 `npx`、不再下载技能、也不发起任何网络请求。技能就在包里，`skill-filesystem` 直接读目录。
+
+以前的版本（0.8.x 及原版）会执行：
 
 ```bash
-cd ~/.dsh/dsh-matt-flow-preset && npx -y skills@latest add mattpocock/skills -a universal -s <缺失的技能...> -y
+npx -y skills@latest add mattpocock/skills ...
 ```
 
-- 这里**没有** `-g`：项目作用域让 CLI 写进 `~/.dsh/dsh-matt-flow-preset/.agents/skills`（仅本预设可见），而不是所有预设都扫描的共享 `~/.agents/skills`。原版用的正是 `-g`，会把技能装进共享目录——这是本 fork 修掉的跨预设泄漏。
-- `-a universal` 避免 CLI 额外链接到各个 agent 自己的技能目录。
-- `cordis.patch.yml` 把这个私有目录声明为 `preset-matt` 的 `customSkillDirs`；其他预设没有这项配置，永远不会扫描它。
+其中原版用 `-g`（全局），把技能装进所有预设都会扫描的 `~/.agents/skills`——这正是本 fork 要修掉的跨预设泄漏。0.9.0 把技能直接打进包，这条命令连同它带来的网络、权限、失败重试问题一起消失了。
 
-触发条件很窄：
-
-- 只在 27 个必需技能中任何一个缺失时才执行
-- 失败后 24 小时内不再自动重试
-- 可用 `flow_skills` 查看状态、拿到手动安装命令
-- 插件只在 `preset-matt` 下装载；其他预设不会启动它，也看不到这些技能
-
-**前提**：机器上要有 `node` 和 `npx`，且能访问 npm registry 与 GitHub。缺失时不会崩溃，只会把状态记为 `failed`。
+`cordis.patch.yml` 用一段 `!!js` 表达式把包内的 `skills/` 声明为 `preset-matt` 的 `customSkillDirs`（从 profile 里解析本包的 `package.json` 位置）；其他预设没有这项配置，永远不会扫描它。
 
 ### 它写哪些文件
 
@@ -217,12 +216,12 @@ cd ~/.dsh/dsh-matt-flow-preset && npx -y skills@latest add mattpocock/skills -a 
 | `.scratch/<feature>/flow.json` | 阶段状态 |
 | `.scratch/<feature>/decisions.md`、`spec.md`、`issues/*.md` | 流程产物（由模型写，不是你手动维护） |
 | `docs/agents/issue-tracker.md` | 首次进规范阶段前要求存在的 tracker 说明 |
-| `~/.dsh/dsh-matt-flow-preset/.agents/skills/` | Matt 技能套件（仅本预设可见，不污染共享目录） |
-| 系统临时目录下的 `dsh-matt-flow-*.log` | 启动打点与安装日志 |
+| 包内的 `skills/` | Matt 技能套件本体（随包安装，只被本预设扫描；不需要也不应该改写） |
+| 系统临时目录下的 `dsh-matt-flow-*.log` | 启动打点日志 |
 
 ### 权限范围
 
-插件不申请额外权限，不读取凭据，不发起除上述 `npx` 之外的网络请求。
+插件不申请额外权限，不读取凭据，不发起任何网络请求，不启动子进程。唯一的写操作是上表里首次初始化仓库时的那几个文件，且需要你批准一次。
 
 ## 已知边界
 
@@ -231,11 +230,12 @@ cd ~/.dsh/dsh-matt-flow-preset && npx -y skills@latest add mattpocock/skills -a 
 - **UI 有限**：只有一个状态胶囊（输入框工具行）+ 决策卡，没有任务看板。
 - **resume 只认本地文件**：它按 `.scratch/<feature>/` 里的 `decisions.md`、`spec.md`、`issues/*.md` 推断阶段。任务单若在 GitHub Issues 或 Linear 上，读不到，只能停在 `spec`。
 - **工具定义用普通 JSON Schema**：没有用 `defineTool()`，因为插件从工作区链接安装时解析不到 `@deepseek-ai/*`。发布为 npm 包后可以改回。
-- **未在 Windows 上实测**：已按平台适配日志目录、`npx.cmd`、`cmd.exe` 兜底和 `--copy`，但没有真机验证。
+- **技能是快照**：包内的 `skills/` 是打包时的上游快照，不会自己跟着 `mattpocock/skills` 更新；要跟进上游就重新打包发版。DSH 侧改写的部分见 [`skills/ATTRIBUTION.md`](skills/ATTRIBUTION.md)。
+- **未在 Windows 上实测**：已按平台适配日志目录，但没有真机验证。
 
 ## 许可证
 
-MIT，见 [LICENSE](./LICENSE)。
+MIT，见 [LICENSE](./LICENSE)。包内 `skills/` 来自 [mattpocock/skills](https://github.com/mattpocock/skills)（MIT），来源与本地改动见 [`skills/ATTRIBUTION.md`](skills/ATTRIBUTION.md)。
 
 ### 排障
 

@@ -50,13 +50,15 @@
           - id: skill-filesystem
             name: '@deepseek-ai/dsh-skill-filesystem'
             config:
-              # Matt skills live in a preset-private directory so other agent
-              # presets never see them. This expression mirrors index.js:
-              #   DSH_HOME || ~/.dsh  →  /dsh-matt-flow-preset/.agents/skills
-              # includeDefaultRoots stays true so preset-matt still discovers
+              # The Matt suite ships inside this package, so there is nothing to
+              # download and no shared directory to leak through. This expression
+              # mirrors index.js's BUNDLED_SKILLS_DIR: it resolves this plugin's
+              # own package root from the profile and appends `skills`.
+              # Only preset-matt declares it, so no other preset scans these
+              # files. includeDefaultRoots stays true so preset-matt still sees
               # the user's own skills; custom dirs (rank 300) win name clashes.
               customSkillDirs:
-                - !!js process.getBuiltinModule('node:path').join(process.env.DSH_HOME || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), '.dsh'), 'dsh-matt-flow-preset', '.agents', 'skills')
+                - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@baotherye/dsh-matt-flow-preset/package.json')), 'skills')
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
           - id: command-goal

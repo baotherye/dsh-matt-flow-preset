@@ -7,9 +7,9 @@
  *   2. the `flow_stage` tool, which owns the phase of one feature and refuses
  *      skipped stages or missing artifacts.
  *
- * The skills themselves live in a preset-private directory that no other agent
- * preset scans; this plugin never copies or edits them, so `npx skills update`
- * cannot drift it.
+ * The skills themselves ship inside this package, in `skills/`, and only the
+ * matt preset declares that directory as a skill root — no other agent preset
+ * scans it, and nothing is downloaded at runtime.
  *
  * This module deliberately imports only Node builtins: it is installed as a
  * `link:` package outside the profile, where bare `@deepseek-ai/*` specifiers do
@@ -17,8 +17,7 @@
  *
  * @module dsh-matt-flow
  */
-import { spawn } from 'node:child_process'
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,17 +25,14 @@ import { join } from 'node:path'
 export const name = 'matt-flow'
 
 /** Bumped with package.json; the startup breadcrumbs carry it so a stale module is visible. */
-const PLUGIN_VERSION = '0.8.2'
+const PLUGIN_VERSION = '0.9.0'
 
 /** Startup breadcrumbs, so a "never started" report can be told apart from a silent no-op. */
 const LOG_DIR = tmpdir()
 const LOAD_LOG = join(LOG_DIR, 'dsh-matt-flow-load.log')
 const APPLY_LOG = join(LOG_DIR, 'dsh-matt-flow-apply.log')
 
-/** The upstream skill package this workflow is built on. */
-const SKILLS_PACKAGE = 'mattpocock/skills'
-
-/** Skills the flow cannot run without; every one must exist under the agents home. */
+/** Skills the flow cannot run without; every one must exist under the bundled skills dir. */
 /**
  * Only the skills this flow reaches for. Installing the whole package pulls in
  * writing and scaffolding skills nobody here uses, and every missing one is a
@@ -52,7 +48,7 @@ const REQUIRED_SKILLS = [
   'prototype', 'research',
   // `resolving-merge-conflicts` is deliberately absent: upstream removed it
   // (CHANGELOG, PR #1120) and asked for no replacement — the agent resolves a
-  // merge inline. Listing it would make the install command fail.
+  // merge inline. Listing it would report the bundle as incomplete.
   'pr', 'handoff', 'migrate-to-shoehorn',
   // User-invoked, named in the prompt: the corrective and the retrospective
   'retro', 'wait-what',
@@ -60,26 +56,19 @@ const REQUIRED_SKILLS = [
   'setup-matt-pocock-skills', 'setup-pre-commit',
 ]
 
-/** Bootstrap bookkeeping lives beside the profile, never inside the user's skills tree. */
-
-/** The npx launcher differs per platform; Windows resolves it through PATHEXT. */
-const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-
-/** Bound on a skill install, long enough for a slow network and short enough to fail. */
-const INSTALL_TIMEOUT_MS = 4 * 60_000
-
 /**
- * The skills CLI's project-scope install writes to `<cwd>/.agents/skills`, which
- * is private to this preset when we give it a dedicated cwd. A global
- * (`-g -a universal`) install would instead write to the shared
- * `$HOME/.agents/skills`, which EVERY agent preset scans — that is exactly the
- * cross-preset leak this fork exists to avoid.
+ * The skills ship inside this package, under `skills/`, so there is nothing to
+ * install and no shared directory to leak into: the files are only readable by
+ * a preset that scans this exact directory. The preset declares it as
+ * `customSkillDirs` in cordis.patch.yml (evaluated with `!!js`), which no other
+ * agent preset has, so the suite is invisible outside preset-matt.
  *
- * The same path is declared in cordis.patch.yml as preset-matt's
- * `customSkillDirs` (evaluated with `!!js`). Keep the two formulas identical.
+ * `import.meta.dirname` is the package root — this module's own directory —
+ * which is the one path that stays correct whether the package is npm-installed
+ * into a profile or linked from a checkout. Keep the patch formula identical.
  */
-const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh')
-const MATT_SKILLS_HOME = join(DSH_HOME, 'dsh-matt-flow-preset')
+const PACKAGE_ROOT = import.meta.dirname
+const BUNDLED_SKILLS_DIR = join(PACKAGE_ROOT, 'skills')
 
 function mark(file, note) {
   try {
@@ -146,7 +135,7 @@ const EVIDENCE_MIN_CHARS = 8
 
 const FLOW_SECTION = `# Development workflow (Matt Pocock skill suite)
 
-This deployment carries the user's engineering skills in a preset-private directory. Treat that suite as the default way to do feature work.
+This deployment carries the user's engineering skills bundled with the plugin, where only this preset can see them. Treat that suite as the default way to do feature work.
 
 ## This flow governs, not the repo's other processes
 
@@ -457,33 +446,25 @@ function buildTool(ctx) {
       // first feature of a repo starts here, so this is where the check lands —
       // and where a missing file is written, so no round-trip is spent asking.
       const trackerPath = join(cwd, TRACKER_DOC)
-      // Two gates, in order, and both are refusals rather than advice: the
-      // templates live in the skill package, and nothing may run before the
-      // repo configuration exists.
-      // Both side effects run from the host, which the tool sandbox does not
-      // cover, so the decision goes to the approval seam DSH already owns: the
-      // user grants it once and it is audited. The prompt is asked only when
-      // something is actually missing, and it names that work.
-      let skills = skillPresence()
-      let repoReady = await isFileReady(join(cwd, TRACKER_DOC), TRACKER_MIN_CHARS)
-      if (skills.missing.length > 0 || !repoReady) {
-        await requireConsent(ctx, exec, consentText(skills.missing, repoReady))
+      // The skill suite needs no provisioning: those files ship inside this
+      // package, so a missing one means a broken or partial install, and no
+      // command the model could run would fix that. Refuse rather than offer a
+      // repair path that cannot work.
+      const bundled = skillPresence()
+      if (bundled.missing.length > 0) {
+        throw new Error(
+          `the bundled skill suite is incomplete: missing ${bundled.missing.join(', ')} under ${skillsHome()}. `
+          + 'The package was installed partially; reinstall the plugin. Do not try to fetch these skills.'
+        )
       }
-
-      if (skills.missing.length > 0) {
-        // Install from the host, not through the model's shell: the plugin's own
-        // code is outside the tool sandbox, so this needs no terminal and no
-        // approval, and the user never leaves the session.
-        const outcome = await installSkills(skills.missing)
-        skills = skillPresence()
-        if (!outcome.ok || skills.missing.length > 0) {
-          throw new Error(
-            `the skills this flow needs could not be installed: ${skills.missing.join(', ') || 'unknown'}. `
-            + `Reason: ${outcome.reason || 'install failed'}. `
-            + 'Report that to the user with this command as the manual fallback; do not run it yourself:\n'
-            + `  ${installCommand(skills.missing.length > 0 ? skills.missing : ['*'])}`
-          )
-        }
+      // One gate left, and it is a refusal rather than advice: nothing may run
+      // before the repo configuration exists. The write runs from the host,
+      // which the tool sandbox does not cover, so the decision goes to the
+      // approval seam DSH already owns: the user grants it once and it is
+      // audited. The prompt is asked only when the write is actually needed.
+      let repoReady = await isFileReady(join(cwd, TRACKER_DOC), TRACKER_MIN_CHARS)
+      if (!repoReady) {
+        await requireConsent(ctx, exec, consentText(repoReady))
       }
 
       if (!repoReady) {
@@ -699,12 +680,12 @@ function buildAskTool() {
 }
 
 /**
- * The preset-private skills directory. We never fall back to the shared
- * ~/.agents/skills: doing so would let other presets see this suite. This is
- * `<privateHome>/.agents/skills`, the project-scope target of the skills CLI.
+ * The skills directory that ships inside this package. There is no install step
+ * and no shared fallback: the suite is these files, and only a preset that
+ * scans `BUNDLED_SKILLS_DIR` can see them.
  */
 function skillsHome() {
-  return join(MATT_SKILLS_HOME, '.agents', 'skills')
+  return BUNDLED_SKILLS_DIR
 }
 
 /**
@@ -725,8 +706,8 @@ function skillPresence() {
 /**
  * Ask the user, through the harness's own approval seam, before the host writes.
  *
- * The plugin writes and spawns from the host process, which the tool sandbox
- * does not cover. Rather than re-deriving permission rules here, the decision is
+ * The plugin writes from the host process, which the tool sandbox does not
+ * cover. Rather than re-deriving permission rules here, the decision is
  * handed to `ctx.approval`: it renders the prompt, records the audit pair, and
  * fails closed when no answerer is composed.
  * @param {object} ctx plugin context
@@ -764,29 +745,22 @@ async function requireConsent(ctx, exec, text) {
  * The exact work the plugin is about to do, in both languages.
  *
  * The approval card is the only place a user learns that this plugin touches the
- * disk, so it names the files and, when skills are missing, the very command that
- * will run — not a summary of the idea.
- * @param {string[]} missing skill names that must be installed
- * @param {boolean} repoReady whether docs/agents already exists
+ * disk, so it names every file it will write rather than summarising the idea.
+ * Provisioning the skill suite is deliberately absent: those files ship inside
+ * this package and are never written at runtime.
+ * @param {boolean} repoReady whether the repo configuration already exists
  * @returns {{ en: string, zh: string }} display text
  */
-function consentText(missing, repoReady) {
-  const parts = []
+function consentText(repoReady) {
   const en = []
   const zh = []
-  if (missing.length > 0) {
-    en.push(`install ${missing.length} missing skill${missing.length === 1 ? '' : 's'} (${missing.join(', ')}) into the preset-private skills directory (${MATT_SKILLS_HOME}/.agents/skills)`)
-    zh.push(`安装缺失的 ${missing.length} 个技能到预设私有目录（${MATT_SKILLS_HOME}/.agents/skills，${missing.join(', ')}）`)
-    parts.push(installCommand(missing))
-  }
   if (!repoReady) {
     en.push(`create the repository agent setup: ${TRACKER_DOC}, docs/agents/domain.md, triage-labels.md and the Agent skills block in AGENTS.md`)
     zh.push(`创建本仓库的 Agent 配置：${TRACKER_DOC}、docs/agents/domain.md、triage-labels.md，以及 AGENTS.md 里的技能说明`)
   }
-  const command = parts.length > 0 ? `\n\n$ ${parts.join('\n$ ')}` : ''
   return {
-    en: `matt-flow wants to ${en.join(' and ')}.${command}`,
-    zh: `matt-flow 想要${zh.join('，并')}。${command}`,
+    en: `matt-flow wants to ${en.join(' and ')}.`,
+    zh: `matt-flow 想要${zh.join('，并')}。`,
   }
 }
 
@@ -838,9 +812,12 @@ function initialiseRepo(cwd) {
     if (labels !== null) put('triage-labels.md', labels)
   }
 
-  const claude = join(cwd, 'CLAUDE.md')
+  // DSH reads AGENTS.md first and CLAUDE.md as a fallback, so prefer the file
+  // DSH itself would load; only fall back to CLAUDE.md in a repo that already
+  // keeps its agent instructions there.
   const agents = join(cwd, 'AGENTS.md')
-  const host = existsSync(claude) ? claude : agents
+  const claude = join(cwd, 'CLAUDE.md')
+  const host = existsSync(agents) ? agents : existsSync(claude) ? claude : agents
   const section = [
     '## Agent skills',
     '',
@@ -873,82 +850,17 @@ function initialiseRepo(cwd) {
 }
 
 /**
- * The install command for a specific set of skills, for the user to run.
- * @param {string[]} skills missing skill names
- * @returns {string} a single shell command
- */
-function installCommand(skills) {
-  // Project scope (no `-g`) makes the CLI write to `<cwd>/.agents/skills`. We
-  // `cd` into the private home so that directory is private to this preset —
-  // the command is self-contained both for the child spawn and for a user
-  // running it by hand. A global install would hit the shared ~/.agents/skills
-  // that every preset scans: the cross-preset leak this fork avoids.
-  // `--skill` takes space-separated names; `-a universal` avoids linking into
-  // each agent's own directory; `-y` stops the CLI from prompting.
-  const dir = `"${MATT_SKILLS_HOME}"`
-  const cd = process.platform === 'win32' ? `cd /d ${dir} && ` : `cd ${dir} && `
-  return `${cd}${NPX} -y skills@latest add ${SKILLS_PACKAGE} -a universal -s ${skills.join(' ')} -y`
-}
-
-/**
- * Install exactly the missing skills, from this host process.
+ * The skills tool: report where the suite lives and that it needs no install.
  *
- * The plugin's own code is not subject to the tool sandbox, so this needs no
- * terminal and no approval: the user never leaves the app. One install at a
- * time — a concurrent call joins the running promise.
- * @param {string[]} missing skill names
- * @returns {Promise<{ok: boolean, reason?: string, code?: number|null}>} outcome
+ * Read-only by construction. The suite ships inside the package, so there is no
+ * install path, no download, and nothing for the model or the user to run.
+ * @returns {object} the `flow_skills` tool definition
  */
-let installInFlight = null
-function installSkills(missing) {
-  if (process.env.DSH_MATT_FLOW_NO_INSTALL === '1') {
-    return Promise.resolve({ ok: false, reason: 'install disabled by DSH_MATT_FLOW_NO_INSTALL' })
-  }
-  if (installInFlight) return installInFlight
-
-  const line = `${installCommand(missing)}${process.platform === 'win32' ? ' --copy' : ''}`
-  mark(APPLY_LOG, `installing ${missing.length} skill(s) in ${MATT_SKILLS_HOME}: ${line}`)
-
-  // The CLI needs its private cwd to exist before it writes ./.agents/skills.
-  try {
-    mkdirSync(MATT_SKILLS_HOME, { recursive: true })
-  } catch (error) {
-    return Promise.resolve({ ok: false, reason: `cannot create private skills home: ${String(error && error.message)}` })
-  }
-
-  installInFlight = new Promise((resolve) => {
-    let child
-    try {
-      child = spawn(line, { shell: true, stdio: 'ignore', env: process.env, cwd: MATT_SKILLS_HOME })
-    } catch (error) {
-      resolve({ ok: false, reason: String(error && error.message) })
-      return
-    }
-    const timer = setTimeout(() => {
-      try { child.kill('SIGTERM') } catch { /* already gone */ }
-      resolve({ ok: false, reason: `install did not finish within ${Math.round(INSTALL_TIMEOUT_MS / 1000)}s` })
-    }, INSTALL_TIMEOUT_MS)
-    child.on('error', (error) => {
-      clearTimeout(timer)
-      resolve({ ok: false, reason: String(error && error.message) })
-    })
-    child.on('exit', (code) => {
-      clearTimeout(timer)
-      const left = skillPresence().missing
-      mark(APPLY_LOG, `install exited ${code}; still missing: ${left.join(', ') || 'none'}`)
-      resolve(left.length === 0 ? { ok: true, code } : { ok: false, reason: `still missing: ${left.join(', ')}`, code })
-    })
-  }).finally(() => { installInFlight = null })
-
-  return installInFlight
-}
-
-/** Build the flow_skills tool: report or retry the suite install. */
 function buildSkillsTool() {
   return {
     name: 'flow_skills',
     description:
-      'Report whether the skills this workflow needs are installed. Read-only: it cannot install anything. When skills are missing it returns the exact command for the user to run — never run that command yourself.',
+      'Report the bundled skills this workflow runs on: where they live, which are present, and which are missing. Read-only; the suite ships with the plugin, so there is nothing to install.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -957,7 +869,7 @@ function buildSkillsTool() {
         action: {
           type: 'string',
           enum: ['status'],
-          description: 'status reads the current state. There is no install action on purpose.'
+          description: 'status reads the current state. There is no install action: the suite is bundled.'
         }
       }
     },
@@ -965,30 +877,29 @@ function buildSkillsTool() {
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['state', 'present', 'missing'],
+        required: ['state', 'present', 'missing', 'directory'],
         properties: {
           state: { type: 'string' },
           present: { type: 'array', items: { type: 'string' } },
           missing: { type: 'array', items: { type: 'string' } },
-          log: { type: 'string' },
-          error: { type: 'string' },
-          command: { type: 'string' }
+          directory: { type: 'string' },
+          error: { type: 'string' }
         }
       },
       render: (_args, value) => [{
         type: 'text',
         text: value.missing.length === 0
-          ? `skills: all ${value.present.length} present`
-          : `skills: missing ${value.missing.join(', ')} — give the user this command, do not run it: ${value.command}`
+          ? `skills: all ${value.present.length} present in ${value.directory}`
+          : `skills: missing ${value.missing.join(', ')} from the bundled directory ${value.directory} — the plugin package is incomplete, reinstall it`
       }]
     },
     async execute() {
       const { present, missing } = skillPresence()
       return {
-        state: missing.length === 0 ? 'present' : 'missing',
+        state: missing.length === 0 ? 'present' : 'incomplete',
         present,
         missing,
-        ...(missing.length === 0 ? {} : { command: installCommand(missing) }),
+        directory: skillsHome(),
       }
     }
   }
