@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Matt 工程流",
-    "description": "带前置条件的开发工作流预设：拷问 → 规范 → 任务 → 实现 → 收尾。提供阶段工具 flow_stage、决策卡 flow_ask、技能自检 flow_skills，以及输入框工具行的阶段胶囊（含并行子代理）。"
+    "description": "带前置条件的开发工作流预设：拷问 → 规范 → 任务 → 实现 → 收尾。提供阶段工具 flow_stage、技能自检 flow_skills，以及输入框工具行的阶段胶囊（含并行子代理）；决策问答走 DSH 内置的 ask_user_question。"
   }
 }

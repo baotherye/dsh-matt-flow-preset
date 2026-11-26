@@ -23,7 +23,7 @@
 | `preset-matt` | 新增一个 agent 预设 `matt-flow`，插件集即官方 `standard` 预设 + 本包的 `matt-flow` 插件。在新建会话的预设选择器里出现。 |
 | 系统提示词段落 `matt-flow` | 告诉模型：哪些技能它能自己 `skill` 加载（`grilling`/`tdd`/`code-review`/`diagnosing-bugs`…），哪些只能由你 `/命令` 触发（`/to-spec`、`/to-tickets`…），以及 拷问 → 规范 → 任务 → 实现 → 收尾 的顺序、每阶段该做什么。评审不是独立阶段，它在实现里完成。 |
 | 工具 `flow_stage` | 记录并推进某个 feature 的阶段，落盘到 `.scratch/<feature>/flow.json`。前进必须逐级、且要满足前置条件；回退（返工）允许。 |
-| 工具 `flow_ask` + 决策卡（`client.js`） | 拷问阶段把决策做成对话里的卡片：每题一组选项加一个补充输入框，一次最多三题。点「提交选择」后，答案作为你的下一条消息发出，模型接着往下走。卡片由本包自己的浏览器模块渲染，**不依赖 dsh-genui**。 |
+| 决策问答 | 用 DSH 内置的 `ask_user_question`（`tool-ask-user` 行）：拷问阶段把决策做成 DSH 自带的卡片，每题一组选项加一个自由输入框，一次最多三题；整批提交后答案作为工具结果回到模型。本包不再注册自己的问答工具，也不再渲染自己的卡片。 |
 | 阶段胶囊（`client.js`） | 输入框工具行左侧的小胶囊：当前阶段、第几步、**正在运行哪些子代理**。点开浮层看每个阶段的说明和前置条件。只在 Matt 预设的会话里出现。 |
 
 ### 一个包，两行挂载
@@ -185,7 +185,7 @@ rm -rf ~/.dsh/dsh-matt-flow-preset
 改完代码后：
 
 - **`index.js` 改动**：必须重启 DSH。预设子树持有的模块在 Node 的 ESM 缓存里，`install_bundle` 会返回 `restart-required`（原因 `unmanaged-plugin`），热重载换不掉已加载的代码。重启后看系统临时目录的 `dsh-matt-flow-load.log` 确认版本号（macOS/Linux 在 `/tmp`，Windows 在 `%TEMP%`）。
-- **`client.js` 改动**：先 `node --check client.js`，再刷新页面。浏览器侧模块由 `dsh.client` 清单扫描后加载，不刷新拿不到新模块；注册成功后可在 `tool.call.toolview` 的 occupant 里看到 `flow_ask`。
+- **`client.js` 改动**：先 `node --check client.js`，再刷新页面。浏览器侧模块由 `dsh.client` 清单扫描后加载，不刷新拿不到新模块；本包现在只剩阶段胶囊一处注册（`conversation.input.left`）。
 - **改完先跑一遍**：`npm test`（不依赖网络）。
 
 ### 技能套件随插件升级
@@ -269,7 +269,7 @@ npx -y skills@latest add mattpocock/skills ...
 
 - **不接管模型行为**：提示词是强约束、不是硬约束。真正的强制只有 `flow_stage` 的前置条件——模型完全可以绕过它直接改代码。要更强的约束，得再加 `ctx.tools.guard()`。
 - **预设即快照**：插件集复制自官方 `standard` 预设。DSH 升级后 `standard` 若增删插件，这个预设不会自动跟随；升级后建议对照 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 同步一次。
-- **UI 有限**：只有一个状态胶囊（输入框工具行）+ 决策卡，没有任务看板。
+- **UI 有限**：只有一个状态胶囊（输入框工具行）；问答用 DSH 内置卡片，没有任务看板。
 - **resume 只认本地文件**：它按 `.scratch/<feature>/` 里的 `decisions.md`、`spec.md`、`issues/*.md` 推断阶段。任务单若在 GitHub Issues 或 Linear 上，读不到，只能停在 `spec`。
 - **工具定义用普通 JSON Schema**：没有用 `defineTool()`，因为插件从工作区链接安装时解析不到 `@deepseek-ai/*`。发布为 npm 包后可以改回。
 - **技能是快照**：包内的 `skills/` 是打包时的上游快照，不会自己跟着 `mattpocock/skills` 更新；要跟进上游就重新打包发版。DSH 侧改写的部分见 [`skills/ATTRIBUTION.md`](skills/ATTRIBUTION.md)。

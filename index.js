@@ -25,7 +25,7 @@ import { join } from 'node:path'
 export const name = 'matt-flow'
 
 /** Bumped with package.json; the startup breadcrumbs carry it so a stale module is visible. */
-const PLUGIN_VERSION = '0.11.0'
+const PLUGIN_VERSION = '0.12.0'
 
 /** Startup breadcrumbs, so a "never started" report can be told apart from a silent no-op. */
 const LOG_DIR = tmpdir()
@@ -182,9 +182,7 @@ If the call comes back with an error, read it: it says whether the user refused,
 
 1. **grill** — load \`grilling\` and \`domain-modeling\`, which together are what the user-facing \`/grill-with-docs\` runs. Interview until the frontier is empty: facts are yours to find, decisions are the user's. No code and no spec yet. Write terms into \`GLOSSARY.md\` (the file \`domain-modeling\` maintains) and hard-to-reverse choices into \`docs/adr/\` as they settle, but create those files lazily — with no new term and no such decision, write neither.
 
-When a decision can be answered by picking one of two to four options, put it on a card with \`flow_ask\` instead of writing it as prose: at most three questions per call, each option one short line, the recommended one first. The user's submission arrives as their next message; record the settled decisions in \`.scratch/<feature>/decisions.md\` before advancing to \`spec\`.
-
-Prefer \`flow_ask\` over the built-in \`ask_user_question\` whenever an answer needs both a choice and a value — "pick a naming strategy, then give me the actual name", "choose the retry policy, then the count". The built-in card advances the moment a single choice is clicked, so the user never reaches the field; and in a single-select question its text answer clears the choice, so the two cannot be given together. \`flow_ask\` keeps them separate: the option and the note are submitted as one batch. Reserve \`ask_user_question\` for a plain choice with nothing to add.
+When a decision can be answered by picking one of two to four options, put it on a card with \`ask_user_question\` instead of writing it as prose: at most three questions per call, each option one short line, the recommended one first. The call blocks until the user submits the whole batch, and the answers come back as the tool result; record the settled decisions in \`.scratch/<feature>/decisions.md\` before advancing to \`spec\`. A question the user explicitly skipped comes back empty — leave it open and do not press it again. When an answer needs both a choice and a value — "pick a naming strategy, then give me the actual name", "choose the retry policy, then the count" — ask both on the same card, or use the question's free-text field: the whole batch is submitted together.
 2. **spec** — agree the test boundaries with the user first, then write \`.scratch/<feature>/spec.md\`: problem, solution, user stories, decisions, test boundaries, out of scope. Base it on the settled decisions; do not re-interview.
 3. **tickets** — draft the breakdown, then put the granularity to the user before writing any file: how many tickets, and whether each one is small enough to finish in one fresh context window. Only after they agree, write \`.scratch/<feature>/issues/NN-slug.md\`. One vertical slice per ticket that leaves the product working, each declaring \`blocked-by:\`. When you write Chinese, name one ticket 任务单 and the stage 任务. Never write 拆票, 工单, or use 票 as shorthand — 工单 reads as a support ticket, and the other two are not words.
 4. **implement** — one ticket per pass. Load \`tdd\`; work at the pre-agreed seams; typecheck and run that ticket's tests; no scope creep. Review is part of this stage, not a stage of its own: review a ticket (load \`code-review\` for both axes — Standards and Spec) and commit as you finish it, or let a subagent review while you start the next ticket. Move to \`done\` only when every ticket is implemented, reviewed and committed.
@@ -587,97 +585,6 @@ function buildTool(ctx) {
   }
 }
 
-/** Options the decision card renders, one entry per choice. */
-const ASK_PARAMETERS = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['feature', 'questions'],
-  properties: {
-    feature: {
-      type: 'string',
-      description: 'Feature slug this decision belongs to, matching flow_stage.'
-    },
-    questions: {
-      type: 'array',
-      description: 'One to three decisions to settle, each with two to four labelled options.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['title', 'options'],
-        properties: {
-          id: { type: 'string', description: 'Stable id, used in the recorded answer.' },
-          title: { type: 'string', description: 'The decision, phrased as the question the user answers.' },
-          detail: { type: 'string', description: 'Optional one-line context under the title.' },
-          allowText: { type: 'boolean', description: 'Whether the card offers a free-text field. Defaults to true.' },
-          options: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['label'],
-              properties: {
-                label: { type: 'string', description: 'Short option name, e.g. "A) Vite + TS + 原生 DOM".' },
-                description: { type: 'string', description: 'One line on the tradeoff or consequence.' }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-const ASK_OUTPUT_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['feature', 'questions', 'state'],
-  properties: {
-    feature: { type: 'string' },
-    questions: { type: 'integer' },
-    state: { type: 'string' }
-  }
-}
-
-/**
- * Build the flow_ask tool: it hands the decision to the card and ends the turn.
- * @returns {object} registry-ready tool definition
- */
-function buildAskTool() {
-  return {
-    name: 'flow_ask',
-    description:
-      'Ask the user to settle up to three decisions. Renders an interactive card in the conversation with selectable options and a free-text field; the user submits one batch, which arrives as their next message. Use it in the grill phase instead of writing the questions as prose. This tool does not wait: end your turn after calling it. Chinese wording inside the card: one ticket is 任务单 and the stage is 任务; never write 拆票, 工单, or 票 as shorthand.',
-    parameters: ASK_PARAMETERS,
-    output: {
-      schema: ASK_OUTPUT_SCHEMA,
-      render: (_args, value) => [{
-        type: 'text',
-        text: `决策卡已显示：${value.feature}，${value.questions} 个问题待选择`
-      }]
-    },
-    async execute(args) {
-      const feature = String(args.feature ?? '').trim()
-      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(feature)) {
-        throw new Error('invalid feature slug: use lowercase letters, digits and single hyphens')
-      }
-      const questions = Array.isArray(args.questions) ? args.questions : []
-      if (questions.length === 0) throw new Error('flow_ask needs at least one question')
-      if (questions.length > 3) throw new Error('ask at most three questions at a time')
-      for (const question of questions) {
-        const options = Array.isArray(question?.options) ? question.options : []
-        if (options.length < 2) throw new Error(`question "${question?.title ?? ''}" needs at least two options`)
-        if (options.length > 4) throw new Error(`question "${question?.title ?? ''}" allows at most four options`)
-      }
-      mark(APPLY_LOG, `flow_ask served ${feature} with ${questions.length} question(s)`)
-      return {
-        feature,
-        questions: questions.length,
-        state: 'card rendered in the conversation; wait for the user to submit their choices'
-      }
-    }
-  }
-}
-
 /**
  * The skills directory that ships inside this package. There is no install step
  * and no shared fallback: the suite is these files, and only a preset that
@@ -1038,9 +945,8 @@ export function apply(ctx, config) {
   }
 
   ctx.effect(() => tools.register(buildTool(ctx)))
-  ctx.effect(() => tools.register(buildAskTool()))
   ctx.effect(() => tools.register(buildSkillsTool()))
-  mark(APPLY_LOG, 'flow_stage, flow_ask and flow_skills registered')
+  mark(APPLY_LOG, 'flow_stage and flow_skills registered')
 
   // A refusal, not a hint. Until the repo configuration exists, every tool but
   // the two that can fix that is denied — including reads, so the model cannot

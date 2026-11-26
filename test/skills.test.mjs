@@ -151,7 +151,7 @@ test('no skill depends on a tool this preset does not mount', () => {
     'list_agents', 'wait_agent', 'send_message', 'interrupt_agent', 'subagent',
     'subagent_fork', 'workflow', 'ask_user_question', 'present', 'skill',
     'get_goal', 'create_goal', 'update_goal', 'schedule_create', 'schedule_edit',
-    'schedule_list', 'schedule_view', 'flow_stage', 'flow_ask', 'flow_skills',
+    'schedule_list', 'schedule_view', 'flow_stage', 'flow_skills',
     'create_worktree', 'working_directory', 'subagent_fork',
   ])
   assert.match(patch, /dsh-tool-schedule/, 'schedule tools are mounted, so skills may name them')

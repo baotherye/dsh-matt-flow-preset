@@ -40,13 +40,15 @@ const toolsService = { register: (d) => { defs.push(d); return () => {} } }
 // The plugin asks this seam before any host write; a stub that grants once keeps
 // the ordinary path testable without a live session.
 const approvalStub = { request: async () => 'allowed-once' }
+// The prompt section is captured so a test can check what the model is told.
+const promptSections = []
+const promptService = { section: (entry) => { promptSections.push(entry); return () => {} } }
 const ctx = {
-  get: (k) => (k === 'tools' ? toolsService : k === 'approval' ? approvalStub : undefined),
+  get: (k) => (k === 'tools' ? toolsService : k === 'approval' ? approvalStub : k === 'systemPrompt' ? promptService : undefined),
   effect: (fn) => fn(),
 }
 apply(ctx, {})
 const tool = defs.find((d) => d.name === 'flow_stage')
-const askTool = defs.find((d) => d.name === 'flow_ask')
 const skillsTool = defs.find((d) => d.name === 'flow_skills')
 const exec = { agent: { id: 'session-test' }, callId: 'call-test' }
 
@@ -120,17 +122,14 @@ await rejects('same stage rejected', () => call({ action: 'advance', feature: F,
 const other = await call({ action: 'status', feature: 'brand-new' })
 ok('a new feature starts at grill', other.stage === 'grill' && other.next === 'spec')
 
-// --- flow_ask -------------------------------------------------------------
-ok('flow_ask registered', askTool !== undefined)
-const goodQuestions = [
-  { id: 'stack', title: '技术栈', options: [{ label: 'A) Vite + TS' }, { label: 'B) React' }] },
-  { id: 'store', title: '持久化', options: [{ label: 'A) localStorage' }, { label: 'C) 适配接口' }] }
-]
-const asked = await askTool.execute({ feature: F, questions: goodQuestions }, exec)
-ok('flow_ask returns card state', asked.questions === 2 && asked.state.includes('card rendered'), JSON.stringify(asked))
-await rejects('flow_ask caps at three', () => askTool.execute({ feature: F, questions: [1,2,3,4].map(i => ({ title: 'q'+i, options: [{label:'a'},{label:'b'}] })) }, exec), 'three')
-await rejects('flow_ask needs two options', () => askTool.execute({ feature: F, questions: [{ title: 'q', options: [{ label: 'a' }] }] }, exec), 'two options')
-await rejects('flow_ask validates slug', () => askTool.execute({ feature: 'Bad Slug', questions: goodQuestions }, exec), 'slug')
+// --- questions -------------------------------------------------------------
+// Decisions go through DSH's own ask_user_question card; the plugin must not
+// register a second, competing ask tool.
+ok('flow_ask is gone', defs.find((d) => d.name === 'flow_ask') === undefined,
+  defs.map((d) => d.name).join(','))
+const promptText = promptSections.map((entry) => entry.text).join('\n')
+ok('prompt names ask_user_question', /ask_user_question/.test(promptText), 'prompt does not name ask_user_question')
+ok('prompt no longer names flow_ask', !/flow_ask/.test(promptText), 'prompt still mentions flow_ask')
 
 // --- flow_skills -----------------------------------------------------------
 ok('flow_skills registered', skillsTool !== undefined)
