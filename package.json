@@ -60,5 +60,9 @@
     "sync-upstream": "node scripts/sync-upstream.mjs",
     "sync-upstream:check": "node scripts/sync-upstream.mjs --force",
     "preversion": "node scripts/sync-upstream.mjs --force --apply"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
